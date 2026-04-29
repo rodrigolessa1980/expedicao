@@ -5,11 +5,27 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "Dockerfile.frontend"
+      - "docker-compose.yml"
       - ".github/workflows/backend-ci-cd.yml"
   push:
     branches: [main]
     paths:
       - "backend/**"
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "Dockerfile.frontend"
+      - "docker-compose.yml"
       - ".github/workflows/backend-ci-cd.yml"
   workflow_dispatch:
 
@@ -181,7 +197,6 @@ jobs:
             set -e
             cd /opt/expedicao
             docker login ghcr.io -u '${{ github.actor }}' -p '${{ secrets.GITHUB_TOKEN }}'
-            docker compose pull backend
-            docker compose up -d backend
+            docker compose up -d --build backend frontend
             docker image prune -f
           "
