@@ -34,6 +34,18 @@ const corsOrigins = (process.env.CORS_ORIGIN || "")
   .map((item) => item.trim())
   .filter(Boolean);
 
+/** Base URL for links in e-mails (confirmacao, reset). CORS_ORIGIN allows comma-separated values; FRONTEND_URL is sometimes copied with the same shape — that would produce an invalid href. Prefer the first non-localhost origin when multiple are listed. */
+function publicFrontendBaseUrl() {
+  const raw = process.env.FRONTEND_URL || "http://localhost:5173";
+  const origins = raw
+    .split(",")
+    .map((item) => item.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+  if (origins.length === 0) return "http://localhost:5173";
+  const isLocal = (url) => /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+  return origins.find((u) => !isLocal(u)) ?? origins[0];
+}
+
 if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = "change-me-in-production";
 }
@@ -66,7 +78,7 @@ app.post("/api/auth/register", async (req, res) => {
       confirmado: false
     });
     const tokenInfo = await createUserToken({ userId: user.id, tipo: "confirmacao", ttlMinutes: 60 * 24 });
-    const confirmUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/confirmar-conta?token=${tokenInfo.token}`;
+    const confirmUrl = `${publicFrontendBaseUrl()}/confirmar-conta?token=${tokenInfo.token}`;
     await sendEmail({
       to: email,
       subject: "Confirme sua conta na plataforma",
@@ -93,6 +105,30 @@ app.post("/api/auth/confirm-account", async (req, res) => {
   return res.json({ ok: true, message: "Conta confirmada com sucesso." });
 });
 
+app.post("/api/auth/resend-confirmation", async (req, res) => {
+  const { email } = req.body ?? {};
+  const loginOuEmail = String(email ?? "").trim();
+  if (!loginOuEmail) {
+    return res.status(400).json({ message: "Informe o e-mail." });
+  }
+
+  const user = await findUserByLoginOrEmail(loginOuEmail);
+  if (user?.email && !user.confirmadoEm && user.ativo) {
+    const tokenInfo = await createUserToken({ userId: user.id, tipo: "confirmacao", ttlMinutes: 60 * 24 });
+    const confirmUrl = `${publicFrontendBaseUrl()}/confirmar-conta?token=${tokenInfo.token}`;
+    await sendEmail({
+      to: user.email,
+      subject: "Confirme sua conta na plataforma",
+      html: confirmationEmailTemplate({ nome: user.nome, confirmUrl })
+    });
+  }
+
+  return res.json({
+    ok: true,
+    message: "Se existir conta nao confirmada com esse e-mail, enviamos um novo link."
+  });
+});
+
 app.post("/api/auth/forgot-password", async (req, res) => {
   const { loginOuEmail } = req.body ?? {};
   if (!loginOuEmail) return res.status(400).json({ message: "Informe login ou e-mail." });
@@ -100,7 +136,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
   const user = await findUserByLoginOrEmail(loginOuEmail);
   if (user?.email) {
     const tokenInfo = await createUserToken({ userId: user.id, tipo: "reset", ttlMinutes: 30 });
-    const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/redefinir-senha?token=${tokenInfo.token}`;
+    const resetUrl = `${publicFrontendBaseUrl()}/redefinir-senha?token=${tokenInfo.token}`;
     await sendEmail({
       to: user.email,
       subject: "Redefinicao de senha",

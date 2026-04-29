@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -6,6 +6,8 @@ import { Button } from "../components/ui/button";
 import { useAuthStore } from "../store/useAuthStore";
 
 type Modo = "login" | "criar" | "esqueci" | "redefinir" | "confirmar";
+
+const confirmacaoPorToken = new Map<string, Promise<{ ok: boolean; erro?: string }>>();
 
 export function LoginPage() {
   const initialPath = window.location.pathname;
@@ -22,17 +24,63 @@ export function LoginPage() {
   const [senha, setSenha] = useState("");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
+  const [emailConfirmacao, setEmailConfirmacao] = useState("");
   const [token, setToken] = useState(initialToken);
   const [novaSenha, setNovaSenha] = useState("");
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
+  const [confirmandoLink, setConfirmandoLink] = useState(Boolean(initialModo === "confirmar" && initialToken));
+  const confirmacaoGen = useRef(0);
   const isDevExplicit = import.meta.env.DEV;
 
   const login = useAuthStore((state) => state.login);
   const registrarRepresentante = useAuthStore((state) => state.registrarRepresentante);
   const confirmarConta = useAuthStore((state) => state.confirmarConta);
+  const reenviarConfirmacaoEmail = useAuthStore((state) => state.reenviarConfirmacaoEmail);
   const esqueciSenha = useAuthStore((state) => state.esqueciSenha);
   const redefinirSenha = useAuthStore((state) => state.redefinirSenha);
+
+  useEffect(() => {
+    if (modo !== "confirmar") {
+      setConfirmandoLink(false);
+      return;
+    }
+    const t = new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
+    if (!t) {
+      setConfirmandoLink(false);
+      return;
+    }
+
+    const gen = ++confirmacaoGen.current;
+    setConfirmandoLink(true);
+    setErro("");
+    setSucesso("");
+
+    let p = confirmacaoPorToken.get(t);
+    if (!p) {
+      p = confirmarConta(t).finally(() => {
+        confirmacaoPorToken.delete(t);
+      });
+      confirmacaoPorToken.set(t, p);
+    }
+
+    void p.then((result) => {
+      if (gen !== confirmacaoGen.current) return;
+      setConfirmandoLink(false);
+      if (result.ok) {
+        const path = window.location.pathname.replace(/\/?confirmar-conta\/?$/i, "/") || "/";
+        history.replaceState({}, "", path);
+        setSucesso("Conta confirmada. Agora voce pode acessar.");
+        setModo("login");
+        return;
+      }
+      setErro(result.erro ?? "Falha ao confirmar pelo link.");
+    });
+
+    return () => {
+      confirmacaoGen.current += 1;
+    };
+  }, [modo, confirmarConta]);
 
   const titulo = useMemo(() => {
     if (modo === "criar") return "Criar conta de representante";
@@ -73,18 +121,23 @@ export function LoginPage() {
       return;
     }
     setSucesso("Conta criada. Verifique o e-mail para confirmar.");
+    setEmailConfirmacao(email.trim());
     setModo("confirmar");
   };
 
-  const onConfirmar = async () => {
+  const onReenviarConfirmacao = async () => {
     limparMensagens();
-    const result = await confirmarConta(token);
-    if (!result.ok) {
-      setErro(result.erro ?? "Falha ao confirmar conta.");
+    const dest = emailConfirmacao.trim();
+    if (!dest) {
+      setErro("Informe o e-mail cadastrado.");
       return;
     }
-    setSucesso("Conta confirmada. Agora voce pode acessar.");
-    setModo("login");
+    const result = await reenviarConfirmacaoEmail(dest);
+    if (!result.ok) {
+      setErro(result.erro ?? "Falha ao reenviar e-mail.");
+      return;
+    }
+    setSucesso("Se existir conta nao confirmada com esse e-mail, enviamos um novo link.");
   };
 
   const onEsqueci = async () => {
@@ -142,7 +195,30 @@ export function LoginPage() {
           </div>
         )}
 
-        {(modo === "confirmar" || modo === "redefinir") && (
+        {modo === "confirmar" && (
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">
+              Abra o link enviado ao seu e-mail para confirmar automaticamente. Se nao recebeu ou o link expirou, informe o
+              e-mail cadastrado abaixo.
+            </p>
+            {confirmandoLink ? (
+              <p className="text-sm font-medium text-slate-700">Confirmando sua conta pelo link...</p>
+            ) : (
+              <div className="space-y-1">
+                <Label>E-mail</Label>
+                <Input
+                  type="email"
+                  value={emailConfirmacao}
+                  onChange={(e) => setEmailConfirmacao(e.target.value)}
+                  placeholder="E-mail usado no cadastro"
+                  autoComplete="email"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {modo === "redefinir" && (
           <div className="space-y-1">
             <Label>Token</Label>
             <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder="Cole o token recebido por e-mail" />
@@ -172,8 +248,8 @@ export function LoginPage() {
             Enviar link
           </Button>
         ) : modo === "confirmar" ? (
-          <Button className="w-full" onClick={onConfirmar}>
-            Confirmar conta
+          <Button className="w-full" onClick={onReenviarConfirmacao} disabled={confirmandoLink}>
+            Reenviar e-mail de confirmacao
           </Button>
         ) : (
           <Button className="w-full" onClick={onRedefinir}>

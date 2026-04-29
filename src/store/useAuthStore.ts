@@ -21,6 +21,7 @@ type AuthState = {
   loadUsuarios: () => Promise<void>;
   registrarRepresentante: (payload: { nome: string; email: string; senha: string }) => Promise<{ ok: boolean; erro?: string }>;
   confirmarConta: (token: string) => Promise<{ ok: boolean; erro?: string }>;
+  reenviarConfirmacaoEmail: (email: string) => Promise<{ ok: boolean; erro?: string }>;
   esqueciSenha: (loginOuEmail: string) => Promise<{ ok: boolean; erro?: string }>;
   redefinirSenha: (token: string, senha: string) => Promise<{ ok: boolean; erro?: string }>;
 };
@@ -84,6 +85,15 @@ export const useAuthStore = create<AuthState>()(
           return { ok: true };
         } catch (error) {
           return { ok: false, erro: error instanceof Error ? error.message : "Falha ao confirmar conta." };
+        }
+      },
+
+      reenviarConfirmacaoEmail: async (email) => {
+        try {
+          await apiRequest<{ ok: boolean }>("/api/auth/resend-confirmation", { method: "POST", body: { email } });
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, erro: error instanceof Error ? error.message : "Falha ao reenviar e-mail." };
         }
       },
 
