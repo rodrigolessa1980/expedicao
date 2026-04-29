@@ -77,7 +77,7 @@ function startBackend() {
   const args = process.argv.includes("--watch") ? ["--watch", "src/index.js"] : ["src/index.js"];
   const child = spawn("node", args, {
     stdio: "inherit",
-    shell: true
+    shell: false
   });
 
   child.on("exit", (code) => process.exit(code ?? 0));

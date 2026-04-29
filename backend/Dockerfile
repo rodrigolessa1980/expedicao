@@ -12,4 +12,5 @@ COPY scripts ./scripts
 ENV PORT=2515
 EXPOSE 2515
 
-CMD ["npm", "start"]
+# Produção: evita `npm` como PID 1 e reduz chance de SIGKILL (OOM) em hosts com pouca RAM.
+CMD ["node", "src/index.js"]
