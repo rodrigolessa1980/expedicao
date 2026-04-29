@@ -197,6 +197,7 @@ jobs:
             set -e
             cd /opt/expedicao
             docker login ghcr.io -u '${{ github.actor }}' -p '${{ secrets.GITHUB_TOKEN }}'
-            docker compose up -d --build backend frontend
+            docker compose up -d --build --force-recreate backend frontend
+            docker compose ps backend frontend
             docker image prune -f
           "
