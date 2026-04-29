@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: expedicao-backend
+    ports:
+      - "2515:2515"
+    environment:
+      NODE_ENV: production
+      PORT: 2515
+      JWT_SECRET: change-me-in-production
+      JWT_EXPIRES_IN: 12h
+      CORS_ORIGIN: http://localhost:5772
+      DB_HOST: 143.198.155.216
+      DB_PORT: 3306
+      DB_NAME: controle_epi_main
+      DB_USER: quality_
+      DB_PASSWORD: 7629@Qu4lity

@@ -1,0 +1,135 @@
+name: backend-ci-cd
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci-cd.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci-cd.yml"
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  cd:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/expedicao-backend:latest
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: cd
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key (primary auth)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.SSH }}" ]; then
+            echo "Secret SSH nao configurado."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Test SSH connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "echo 'SSH conectado com sucesso'"
+
+      - name: Sync project folder to server
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "mkdir -p /opt/expedicao"
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
+            --exclude "backend/node_modules" \
+            ./ "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/expedicao/"
+
+      - name: Clone env files from GitHub Secrets
+        shell: bash
+        env:
+          ROOT_ENV: ${{ secrets.ROOT_ENV }}
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ROOT_ENV}" ]; then
+            echo "Secret ROOT_ENV nao configurado."
+            exit 1
+          fi
+          if [ -z "${BACKEND_ENV}" ]; then
+            echo "Secret BACKEND_ENV nao configurado."
+            exit 1
+          fi
+          printf '%s\n' "${ROOT_ENV}" | ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "cat > /opt/expedicao/.env"
+          printf '%s\n' "${BACKEND_ENV}" | ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "cat > /opt/expedicao/backend/.env"
+
+      - name: Deploy backend containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "
+            set -e
+            cd /opt/expedicao
+            docker login ghcr.io -u '${{ github.actor }}' -p '${{ secrets.GITHUB_TOKEN }}'
+            docker compose pull backend
+            docker compose up -d backend
+            docker image prune -f
+          "

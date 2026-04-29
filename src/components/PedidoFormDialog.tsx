@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PlusCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -7,6 +7,7 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { useExportStore } from "../store/useExportStore";
 import { useAuthStore } from "../store/useAuthStore";
+import type { Pedido } from "../types";
 
 const initialValues = {
   numeroPedido: "",
@@ -20,36 +21,91 @@ const initialValues = {
   statusAtual: "",
 };
 
-export function PedidoFormDialog() {
+type PedidoFormDialogProps = {
+  mode?: "create" | "edit";
+  initialPedido?: Pedido | null;
+  trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onSaved?: () => void;
+};
+
+export function PedidoFormDialog({
+  mode = "create",
+  initialPedido = null,
+  trigger,
+  open: openProp,
+  onOpenChange,
+  onSaved,
+}: PedidoFormDialogProps) {
   const status = useExportStore((state) => state.status);
   const addPedido = useExportStore((state) => state.addPedido);
+  const updatePedido = useExportStore((state) => state.updatePedido);
   const usuarios = useAuthStore((state) => state.usuarios);
   const representantes = usuarios.filter((u) => u.tipo === "representante");
-  const [open, setOpen] = useState(false);
+  const [openInterno, setOpenInterno] = useState(false);
   const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState(initialValues);
 
-  const onSubmit = () => {
-    const result = addPedido(form);
-    if (!result.ok) {
-      setErro(result.erro ?? "Erro ao cadastrar pedido.");
+  const aberto = openProp ?? openInterno;
+  const setAberto = onOpenChange ?? setOpenInterno;
+  const numeroPedidoOriginal = useMemo(() => initialPedido?.numeroPedido ?? "", [initialPedido]);
+  const titulo = mode === "edit" ? "Editar pedido" : "Cadastro de Pedido";
+  const textoBotaoSalvar = mode === "edit" ? "Salvar alteracoes" : "Salvar pedido";
+
+  useEffect(() => {
+    if (!aberto) return;
+    setErro("");
+    if (mode === "edit" && initialPedido) {
+      setForm({
+        numeroPedido: initialPedido.numeroPedido,
+        representante: initialPedido.representante,
+        numeroNF: initialPedido.numeroNF,
+        cliente: initialPedido.cliente,
+        dataFaturamento: initialPedido.dataFaturamento,
+        dataExpedicao: initialPedido.dataExpedicao,
+        prazoEntrega: initialPedido.prazoEntrega,
+        dataEntrega: initialPedido.dataEntrega,
+        statusAtual: initialPedido.statusAtual,
+      });
       return;
     }
-    setOpen(false);
+    setForm(initialValues);
+  }, [aberto, initialPedido, mode]);
+
+  const onSubmit = async () => {
+    if (mode === "edit" && !numeroPedidoOriginal) {
+      setErro("Pedido invalido para edicao.");
+      return;
+    }
+    setSalvando(true);
+    const result = mode === "edit" ? await updatePedido(numeroPedidoOriginal, form) : await addPedido(form);
+    setSalvando(false);
+    if (!result.ok) {
+      setErro(result.erro ?? (mode === "edit" ? "Erro ao editar pedido." : "Erro ao cadastrar pedido."));
+      return;
+    }
+    setAberto(false);
     setErro("");
     setForm(initialValues);
+    onSaved?.();
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2">
-          <PlusCircle className="h-4 w-4" />
-          Novo pedido
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <h2 className="text-xl font-semibold text-slate-900">Cadastro de Pedido</h2>
+    <Dialog open={aberto} onOpenChange={setAberto}>
+      {trigger ? (
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+      ) : mode === "create" ? (
+        <DialogTrigger asChild>
+          <Button className="w-full gap-2 sm:w-auto">
+            <PlusCircle className="h-4 w-4" />
+            Novo pedido
+          </Button>
+        </DialogTrigger>
+      ) : null}
+      <DialogContent className="max-w-3xl">
+        <h2 className="text-xl font-semibold text-slate-900">{titulo}</h2>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
@@ -119,11 +175,13 @@ export function PedidoFormDialog() {
 
         {erro ? <p className="mt-3 text-sm text-red-600">{erro}</p> : null}
 
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setAberto(false)} disabled={salvando}>
             Cancelar
           </Button>
-          <Button onClick={onSubmit}>Salvar pedido</Button>
+          <Button className="w-full sm:w-auto" onClick={onSubmit} disabled={salvando}>
+            {salvando ? "Salvando..." : textoBotaoSalvar}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -13,13 +13,13 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        "flex h-10 w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900",
+        "flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-left text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900",
         className,
       )}
       {...props}
     >
       {children}
-      <SelectPrimitive.Icon>
+      <SelectPrimitive.Icon className="shrink-0">
         <ChevronDown className="h-4 w-4 text-slate-500" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>

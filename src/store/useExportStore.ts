@@ -1,146 +1,164 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import dayjs from "dayjs";
 import type { Pedido, Status } from "../types";
-import { pedidosIniciais, statusIniciais } from "../utils/mock-data";
+import { apiRequest } from "../services/api";
+import { useAuthStore } from "./useAuthStore";
 
 type PedidoInput = Omit<Pedido, "numeroPedido"> & { numeroPedido: string };
 type StatusInput = Omit<Status, "id"> & { id?: string };
+type ActionResult = { ok: boolean; erro?: string };
 
 type ExportState = {
   pedidos: Pedido[];
   status: Status[];
-  addPedido: (pedido: PedidoInput) => { ok: boolean; erro?: string };
-  updatePedidoStatus: (numeroPedido: string, statusId: string) => void;
-  addStatus: (payload: StatusInput) => { ok: boolean; erro?: string };
-  updateStatus: (id: string, payload: Omit<StatusInput, "id">) => void;
+  loading: boolean;
+  loadPedidos: () => Promise<void>;
+  loadStatus: () => Promise<void>;
+  loadData: () => Promise<void>;
+  clearData: () => void;
+  addPedido: (pedido: PedidoInput) => Promise<ActionResult>;
+  updatePedido: (numeroPedidoOriginal: string, pedido: PedidoInput) => Promise<ActionResult>;
+  updatePedidoStatus: (numeroPedido: string, statusId: string) => Promise<ActionResult>;
+  addStatus: (payload: StatusInput) => Promise<ActionResult>;
+  updateStatus: (id: string, payload: Omit<StatusInput, "id">) => Promise<ActionResult>;
 };
 
-function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "-");
+function getToken() {
+  return useAuthStore.getState().token;
 }
 
-function criarPedidoFakeMigracao(representante: string, index: number): Pedido {
-  const base = 5000 + index;
+function normalizeDate(value: unknown) {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 10);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+function normalizePedido(pedido: Pedido): Pedido {
   return {
-    numeroPedido: `PED-${base}`,
-    representante,
-    numeroNF: `NF-${9000 + index}`,
-    cliente: index % 2 === 0 ? "Atlas Trading" : "Global Foods",
-    dataFaturamento: dayjs().subtract(18 - (index % 10), "day").format("YYYY-MM-DD"),
-    dataExpedicao: dayjs().subtract(15 - (index % 8), "day").format("YYYY-MM-DD"),
-    prazoEntrega: dayjs().add((index % 7) - 3, "day").format("YYYY-MM-DD"),
-    dataEntrega: statusIniciais[index % statusIniciais.length].id === "finalizado" ? dayjs().format("YYYY-MM-DD") : "",
-    statusAtual: statusIniciais[index % statusIniciais.length].id,
+    ...pedido,
+    dataFaturamento: normalizeDate(pedido.dataFaturamento),
+    dataExpedicao: normalizeDate(pedido.dataExpedicao),
+    prazoEntrega: normalizeDate(pedido.prazoEntrega),
+    dataEntrega: normalizeDate(pedido.dataEntrega),
   };
 }
 
-function garantirDezPorRepresentante(origem: Pedido[]): Pedido[] {
-  const repsAlvo = ["Ana Martins", "Bruno Lima"];
-  const lista = [...origem];
-  const pedidosIds = new Set(lista.map((p) => p.numeroPedido));
-  let idx = 1;
+export const useExportStore = create<ExportState>()((set) => ({
+  pedidos: [],
+  status: [],
+  loading: false,
 
-  repsAlvo.forEach((rep) => {
-    const atuais = lista.filter((p) => p.representante === rep).length;
-    const faltantes = Math.max(0, 10 - atuais);
-    for (let i = 0; i < faltantes; i += 1) {
-      let novo = criarPedidoFakeMigracao(rep, idx);
-      while (pedidosIds.has(novo.numeroPedido)) {
-        idx += 1;
-        novo = criarPedidoFakeMigracao(rep, idx);
-      }
-      pedidosIds.add(novo.numeroPedido);
-      lista.push(novo);
-      idx += 1;
+  clearData: () => set({ pedidos: [], status: [], loading: false }),
+
+  loadPedidos: async () => {
+    const token = getToken();
+    if (!token) return;
+    const pedidos = await apiRequest<Pedido[]>("/api/orders", { token });
+    set({ pedidos: pedidos.map(normalizePedido) });
+  },
+
+  loadStatus: async () => {
+    const token = getToken();
+    if (!token) return;
+    const status = await apiRequest<Status[]>("/api/status", { token });
+    set({ status });
+  },
+
+  loadData: async () => {
+    const token = getToken();
+    if (!token) return;
+    set({ loading: true });
+    try {
+      const [pedidos, status] = await Promise.all([
+        apiRequest<Pedido[]>("/api/orders", { token }),
+        apiRequest<Status[]>("/api/status", { token }),
+      ]);
+      set({
+        pedidos: pedidos.map(normalizePedido),
+        status,
+        loading: false,
+      });
+    } catch (error) {
+      set({ loading: false });
+      throw error;
     }
-  });
+  },
 
-  return lista;
-}
+  addPedido: async (pedido) => {
+    const token = getToken();
+    if (!token) return { ok: false, erro: "Sessao expirada." };
+    try {
+      const novo = await apiRequest<Pedido>("/api/orders", { method: "POST", token, body: pedido });
+      set((state) => ({ pedidos: [normalizePedido(novo), ...state.pedidos] }));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, erro: error instanceof Error ? error.message : "Erro ao cadastrar pedido." };
+    }
+  },
 
-export const useExportStore = create<ExportState>()(
-  persist(
-    (set, get) => ({
-      pedidos: pedidosIniciais,
-      status: statusIniciais,
+  updatePedido: async (numeroPedidoOriginal, pedido) => {
+    const token = getToken();
+    if (!token) return { ok: false, erro: "Sessao expirada." };
+    try {
+      const atualizado = await apiRequest<Pedido>(`/api/orders/${numeroPedidoOriginal}`, {
+        method: "PUT",
+        token,
+        body: pedido,
+      });
+      set((state) => ({
+        pedidos: state.pedidos.map((item) =>
+          item.numeroPedido === numeroPedidoOriginal ? normalizePedido(atualizado) : item,
+        ),
+      }));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, erro: error instanceof Error ? error.message : "Erro ao editar pedido." };
+    }
+  },
 
-      addPedido: (pedido) => {
-        if (!pedido.numeroPedido || !pedido.representante || !pedido.numeroNF || !pedido.cliente) {
-          return { ok: false, erro: "Preencha todos os campos obrigatorios." };
-        }
+  updatePedidoStatus: async (numeroPedido, statusId) => {
+    const token = getToken();
+    if (!token) return { ok: false, erro: "Sessao expirada." };
+    try {
+      const atualizado = await apiRequest<Pedido>(`/api/orders/${numeroPedido}/status`, {
+        method: "PATCH",
+        token,
+        body: { statusId },
+      });
+      set((state) => ({
+        pedidos: state.pedidos.map((item) =>
+          item.numeroPedido === numeroPedido ? normalizePedido(atualizado) : item,
+        ),
+      }));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, erro: error instanceof Error ? error.message : "Erro ao atualizar status do pedido." };
+    }
+  },
 
-        const jaExiste = get().pedidos.some((p) => p.numeroPedido === pedido.numeroPedido);
-        if (jaExiste) {
-          return { ok: false, erro: "Numero de pedido ja cadastrado." };
-        }
+  addStatus: async (payload) => {
+    const token = getToken();
+    if (!token) return { ok: false, erro: "Sessao expirada." };
+    try {
+      const novo = await apiRequest<Status>("/api/status", { method: "POST", token, body: payload });
+      set((state) => ({ status: [...state.status, novo] }));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, erro: error instanceof Error ? error.message : "Erro ao criar status." };
+    }
+  },
 
-        const dataEntregaAutomatica = pedido.statusAtual === "finalizado" ? dayjs().format("YYYY-MM-DD") : pedido.dataEntrega || "";
-        set((state) => ({ pedidos: [{ ...pedido, dataEntrega: dataEntregaAutomatica }, ...state.pedidos] }));
-        return { ok: true };
-      },
-
-      updatePedidoStatus: (numeroPedido, statusId) => {
-        set((state) => ({
-          pedidos: state.pedidos.map((pedido) =>
-            pedido.numeroPedido === numeroPedido
-              ? {
-                  ...pedido,
-                  statusAtual: statusId,
-                  dataEntrega: statusId === "finalizado" ? pedido.dataEntrega || dayjs().format("YYYY-MM-DD") : pedido.dataEntrega,
-                }
-              : pedido,
-          ),
-        }));
-      },
-
-      addStatus: (payload) => {
-        if (!payload.nome || !payload.cor) {
-          return { ok: false, erro: "Informe nome e cor para o status." };
-        }
-
-        const id = payload.id ? slugify(payload.id) : slugify(payload.nome);
-        if (get().status.some((item) => item.id === id)) {
-          return { ok: false, erro: "Ja existe um status com esse identificador." };
-        }
-
-        set((state) => ({
-          status: [...state.status, { id, nome: payload.nome, cor: payload.cor }],
-        }));
-        return { ok: true };
-      },
-
-      updateStatus: (id, payload) => {
-        set((state) => ({
-          status: state.status.map((item) =>
-            item.id === id ? { ...item, nome: payload.nome, cor: payload.cor } : item,
-          ),
-        }));
-      },
-    }),
-    {
-      name: "export-dashboard-storage",
-      version: 4,
-      migrate: (persistedState) => {
-        const state = persistedState as ExportState | undefined;
-        if (!state) return { pedidos: pedidosIniciais, status: statusIniciais };
-        return {
-          ...state,
-          pedidos: garantirDezPorRepresentante(
-            (state.pedidos ?? pedidosIniciais).map((pedido) => ({
-              ...pedido,
-              representante: pedido.representante ?? "Nao informado",
-              dataEntrega:
-                pedido.dataEntrega ??
-                (pedido.statusAtual === "finalizado" ? dayjs().format("YYYY-MM-DD") : ""),
-            })),
-          ),
-        };
-      },
-    },
-  ),
-);
+  updateStatus: async (id, payload) => {
+    const token = getToken();
+    if (!token) return { ok: false, erro: "Sessao expirada." };
+    try {
+      const atualizado = await apiRequest<Status>(`/api/status/${id}`, { method: "PUT", token, body: payload });
+      set((state) => ({
+        status: state.status.map((item) => (item.id === id ? atualizado : item)),
+      }));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, erro: error instanceof Error ? error.message : "Erro ao atualizar status." };
+    }
+  },
+}));

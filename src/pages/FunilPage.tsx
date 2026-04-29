@@ -49,9 +49,9 @@ export function FunilPage({ pedidos }: FunilPageProps) {
                 className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5"
               >
                 <div className="h-12 rounded-lg opacity-85" style={{ width: `${largura}%`, backgroundColor: etapa.cor }} />
-                <div className="absolute inset-0 flex items-center justify-between px-4">
-                  <p className="text-sm font-semibold text-slate-900">{etapa.nome}</p>
-                  <p className="text-sm font-semibold text-slate-900">
+                <div className="absolute inset-0 grid grid-cols-[1fr_auto] items-center gap-2 px-3 sm:px-4">
+                  <p className="truncate text-xs font-semibold text-slate-900 sm:text-sm">{etapa.nome}</p>
+                  <p className="text-xs font-semibold text-slate-900 sm:text-sm">
                     {etapa.quantidade} ({etapa.percentual}%)
                   </p>
                 </div>

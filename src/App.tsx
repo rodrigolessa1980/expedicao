@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChartNoAxesColumn, Settings2, Users } from "lucide-react";
 import { DashboardPage } from "./pages/DashboardPage";
 import { FunilPage } from "./pages/FunilPage";
@@ -18,8 +18,19 @@ export default function App() {
   const [openAtrasados, setOpenAtrasados] = useState(false);
   const pedidos = useExportStore((state) => state.pedidos);
   const status = useExportStore((state) => state.status);
+  const loadingDados = useExportStore((state) => state.loading);
+  const loadData = useExportStore((state) => state.loadData);
+  const clearData = useExportStore((state) => state.clearData);
   const usuarioAtual = useAuthStore((state) => state.usuarioAtual);
   const logout = useAuthStore((state) => state.logout);
+
+  useEffect(() => {
+    if (!usuarioAtual) {
+      clearData();
+      return;
+    }
+    void loadData();
+  }, [usuarioAtual, loadData, clearData]);
 
   const isAdmin = usuarioAtual?.tipo === "administrador";
   const canManage = isAdmin;
@@ -109,16 +120,13 @@ export default function App() {
   }, [pedidosFiltrados]);
 
   if (!usuarioAtual) return <LoginPage />;
+  if (loadingDados && pedidos.length === 0) return <main className="p-6 text-sm text-slate-600">Carregando dados do backend...</main>;
 
   return (
-    <main className="min-h-dvh w-full bg-gray-50">
-      <aside className="group fixed left-0 top-1/2 z-50 hidden -translate-y-1/2 items-center md:flex">
-        <div className="h-24 w-1.5 rounded-r-full bg-slate-300/80 transition-colors group-hover:bg-blue-500" />
-        <nav className="-ml-1 -translate-x-[calc(100%-6px)] rounded-r-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur transition-transform duration-300 group-hover:translate-x-0">
-          <div className="mb-2 border-b border-slate-200 px-2 pb-2">
-            <p className="text-[11px] font-medium text-slate-500">Navegacao</p>
-          </div>
-          <div className="flex min-w-44 flex-col gap-1.5">
+    <main className="min-h-dvh w-full overflow-x-clip bg-gray-50">
+      <header className="sticky top-0 z-50 hidden border-b border-slate-200 bg-white/95 px-2 py-1.5 backdrop-blur sm:px-3 md:block">
+        <div className="mx-auto grid w-full max-w-[1800px] items-center gap-1.5 xl:grid-cols-[auto_minmax(380px,1fr)_minmax(300px,500px)_auto]">
+          <div className="flex min-w-0 items-center gap-2">
             {canSeeCadastros ? (
               <Button variant={view === "status" ? "default" : "outline"} onClick={() => setView("status")} size="sm">
                 <Settings2 className="h-3.5 w-3.5 shrink-0" />
@@ -131,24 +139,67 @@ export default function App() {
                 Usuarios
               </Button>
             ) : null}
-            <Button variant="outline" onClick={logout} size="sm">
-              Sair
-            </Button>
           </div>
-        </nav>
-      </aside>
-
-      <div className="w-full space-y-4 px-3 pb-20 pt-3 sm:px-4 md:space-y-5 md:px-6 md:pb-6 md:pt-4">
-        <header className="rounded-2xl bg-white p-4 shadow-sm md:p-5">
-          <div className="grid gap-3 lg:grid-cols-[1fr_270px_270px_1.2fr] lg:items-center">
-            <div>
-              <p className="text-xs font-medium text-blue-600">Painel Executivo</p>
-              <h1 className="text-xl font-semibold text-gray-900 md:text-2xl">Acompanhamento de Expedicoes</h1>
+          {view === "dashboard" ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+              <p className="mb-1 text-[10px] font-medium text-slate-500">Informacoes</p>
+              <div className="grid grid-cols-4 gap-1.5">
+                <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
+                  <p className="text-[9px] text-slate-500">Total</p>
+                  <p className="text-xs font-semibold text-slate-900">{kpis.total}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpenAtrasados(true)}
+                  className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-left"
+                >
+                  <p className="text-[9px] text-slate-500">Atraso</p>
+                  <p className="text-xs font-semibold text-red-700">{kpis.atrasados}</p>
+                </button>
+                <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
+                  <p className="text-[9px] text-slate-500">No prazo</p>
+                  <p className="text-xs font-semibold text-slate-900">{kpis.noPrazo}</p>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
+                  <p className="text-[9px] text-slate-500">Transito</p>
+                  <p className="text-xs font-semibold text-slate-900">{kpis.emTransito}</p>
+                </div>
+              </div>
             </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+              <p className="mb-1 text-[10px] font-medium text-slate-500">Informacoes</p>
+              <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                <p className="text-xs text-slate-600">Funil considera o mesmo periodo selecionado no filtro.</p>
+              </div>
+            </div>
+          )}
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+          <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+            <p className="mb-1 text-[10px] font-medium text-slate-500">Visualizacoes</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant={view === "dashboard" ? "default" : "outline"} onClick={() => setView("dashboard")} size="sm" className="h-8 w-full min-w-0 text-xs">
+                Dashboard
+              </Button>
+              <Button variant={view === "funil" ? "default" : "outline"} onClick={() => setView("funil")} size="sm" className="h-8 w-full min-w-0 text-xs">
+                <ChartNoAxesColumn className="h-3.5 w-3.5" />
+                Funil
+              </Button>
+            </div>
+          </div>
+
+          <Button onClick={logout} size="sm" className="h-8 bg-red-600 px-2.5 text-xs text-white hover:bg-red-700">
+            Sair
+          </Button>
+        </div>
+      </header>
+
+      <div className="mx-auto w-full max-w-[1800px] min-w-0 space-y-4 px-3 pb-20 pt-3 sm:px-4 md:space-y-5 md:px-6 md:pb-6 md:pt-4 xl:px-8">
+        <header className="rounded-2xl bg-white p-4 shadow-sm md:p-5">
+          <div className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_minmax(260px,320px)_minmax(260px,320px)] xl:items-center">
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
               <p className="mb-1 text-[11px] font-medium text-slate-500">Notas por estado</p>
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <div
                   className="relative h-20 w-20 shrink-0 rounded-full"
                   style={{ background: notasPorEstado.conic }}
@@ -158,7 +209,7 @@ export default function App() {
                     {notasPorEstado.total}
                   </div>
                 </div>
-                <div className="space-y-1">
+                <div className="min-w-0 space-y-1">
                   {notasPorEstado.segmentos.slice(0, 3).map((item) => (
                     <div key={item.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.cor }} />
@@ -173,9 +224,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
               <p className="mb-1 text-[11px] font-medium text-slate-500">Notas por representante</p>
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <div
                   className="relative h-20 w-20 shrink-0 rounded-full"
                   style={{ background: notasPorRepresentante.conic }}
@@ -185,7 +236,7 @@ export default function App() {
                     {notasPorRepresentante.total}
                   </div>
                 </div>
-                <div className="space-y-1">
+                <div className="min-w-0 space-y-1">
                   {notasPorRepresentante.segmentos.slice(0, 3).map((item) => (
                     <div key={item.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.cor }} />
@@ -198,59 +249,6 @@ export default function App() {
                   ) : null}
                 </div>
               </div>
-            </div>
-            <div className="grid gap-2">
-              {(view === "dashboard" || view === "funil") && (
-                <div className="grid gap-2 xl:grid-cols-[460px_1fr]">
-                  {view === "dashboard" ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <p className="mb-1 text-[11px] font-medium text-slate-500">Informacoes</p>
-                      <div className="grid grid-cols-4 gap-2">
-                        <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
-                          <p className="text-[10px] text-slate-500">Total</p>
-                          <p className="text-sm font-semibold text-slate-900">{kpis.total}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setOpenAtrasados(true)}
-                          className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-left"
-                        >
-                          <p className="text-[10px] text-slate-500">Atraso</p>
-                          <p className="text-sm font-semibold text-red-700">{kpis.atrasados}</p>
-                        </button>
-                        <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
-                          <p className="text-[10px] text-slate-500">No prazo</p>
-                          <p className="text-sm font-semibold text-slate-900">{kpis.noPrazo}</p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
-                          <p className="text-[10px] text-slate-500">Transito</p>
-                          <p className="text-sm font-semibold text-slate-900">{kpis.emTransito}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <p className="mb-1 text-[11px] font-medium text-slate-500">Informacoes</p>
-                      <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2">
-                        <p className="text-xs text-slate-600">Funil considera o mesmo periodo selecionado no filtro.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="justify-self-end rounded-xl border border-slate-200 bg-slate-50 p-2">
-                    <p className="mb-1 text-[11px] font-medium text-slate-500">Visualizacoes</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button variant={view === "dashboard" ? "default" : "outline"} onClick={() => setView("dashboard")} size="sm">
-                        Dashboard
-                      </Button>
-                      <Button variant={view === "funil" ? "default" : "outline"} onClick={() => setView("funil")} size="sm">
-                        <ChartNoAxesColumn className="h-3.5 w-3.5" />
-                        Funil
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </header>
@@ -267,6 +265,38 @@ export default function App() {
           <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} />
         )}
       </div>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 backdrop-blur md:hidden">
+        <div className="mx-auto grid max-w-xl grid-cols-5 gap-1">
+          <Button variant={view === "dashboard" ? "default" : "outline"} onClick={() => setView("dashboard")} size="sm" className="h-8 w-full px-1 text-[11px]">
+            Dash
+          </Button>
+          <Button variant={view === "funil" ? "default" : "outline"} onClick={() => setView("funil")} size="sm" className="h-8 w-full px-1 text-[11px]">
+            Funil
+          </Button>
+          <Button
+            variant={view === "status" ? "default" : "outline"}
+            onClick={() => (canSeeCadastros ? setView("status") : undefined)}
+            size="sm"
+            className="h-8 w-full px-1 text-[11px]"
+            disabled={!canSeeCadastros}
+          >
+            Status
+          </Button>
+          <Button
+            variant={view === "usuarios" ? "default" : "outline"}
+            onClick={() => (canSeeCadastros ? setView("usuarios") : undefined)}
+            size="sm"
+            className="h-8 w-full px-1 text-[11px]"
+            disabled={!canSeeCadastros}
+          >
+            Users
+          </Button>
+          <Button variant="outline" onClick={logout} size="sm" className="h-8 w-full px-1 text-[11px]">
+            Sair
+          </Button>
+        </div>
+      </nav>
 
       <Dialog open={openAtrasados} onOpenChange={setOpenAtrasados}>
         <DialogContent className="max-w-3xl">

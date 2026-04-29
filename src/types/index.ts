@@ -22,6 +22,9 @@ export type Usuario = {
   id: string;
   nome: string;
   login: string;
-  senha: string;
+  senha?: string;
+  email?: string | null;
   tipo: TipoUsuario;
+  ativo?: boolean;
+  confirmadoEm?: string | null;
 };

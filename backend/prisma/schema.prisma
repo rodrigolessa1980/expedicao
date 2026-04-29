@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id           String      @id @db.VarChar(64)
+  nome         String      @db.VarChar(120)
+  login        String      @unique @db.VarChar(80)
+  email        String?     @unique @db.VarChar(180)
+  tipo         UserTipo
+  ativo        Boolean     @default(true)
+  confirmadoEm DateTime?   @map("confirmado_em")
+  passwordHash String      @map("password_hash") @db.VarChar(64)
+  createdAt    DateTime    @map("created_at")
+  updatedAt    DateTime    @map("updated_at")
+  tokens       UserToken[]
+
+  @@map("users")
+}
+
+model UserToken {
+  token     String         @id @db.VarChar(128)
+  userId    String         @map("user_id") @db.VarChar(64)
+  tipo      UserTokenTipo
+  expiresAt DateTime       @map("expires_at")
+  usedAt    DateTime?      @map("used_at")
+  createdAt DateTime       @map("created_at")
+  user      User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("user_tokens")
+}
+
+model Status {
+  id      String   @id @db.VarChar(80)
+  nome    String   @db.VarChar(120)
+  cor     String   @db.VarChar(20)
+  pedidos Pedido[]
+
+  @@map("status")
+}
+
+model Pedido {
+  numeroPedido   String   @id @map("numero_pedido") @db.VarChar(60)
+  representante  String   @db.VarChar(120)
+  numeroNf       String   @map("numero_nf") @db.VarChar(60)
+  cliente        String   @db.VarChar(160)
+  dataFaturamento DateTime @map("data_faturamento") @db.Date
+  dataExpedicao  DateTime @map("data_expedicao") @db.Date
+  prazoEntrega   DateTime @map("prazo_entrega") @db.Date
+  dataEntrega    DateTime? @map("data_entrega") @db.Date
+  statusAtual    String   @map("status_atual") @db.VarChar(80)
+  status         Status   @relation(fields: [statusAtual], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("pedidos")
+}
+
+enum UserTipo {
+  administrador
+  diretoria
+  representante
+}
+
+enum UserTokenTipo {
+  confirmacao
+  reset
+}

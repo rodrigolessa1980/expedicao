@@ -17,12 +17,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 type PedidosTableProps = {
   dados: Pedido[];
   canManage: boolean;
+  onPedidoClick?: (pedido: Pedido) => void;
 };
 type PeriodoRapido = "todos" | "7d" | "30d" | "90d" | "mes";
 
-export function PedidosTable({ dados, canManage }: PedidosTableProps) {
+export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTableProps) {
   const status = useExportStore((state) => state.status);
   const updatePedidoStatus = useExportStore((state) => state.updatePedidoStatus);
+  const [erroAtualizacao, setErroAtualizacao] = useState("");
   const [periodoRapido, setPeriodoRapido] = useState<PeriodoRapido>("todos");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
@@ -135,9 +137,16 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
             );
           }
           return (
-            <Select value={pedido.statusAtual} onValueChange={(value) => updatePedidoStatus(pedido.numeroPedido, value)}>
+            <Select
+              value={pedido.statusAtual}
+              onValueChange={async (value) => {
+                const result = await updatePedidoStatus(pedido.numeroPedido, value);
+                if (!result.ok) setErroAtualizacao(result.erro ?? "Erro ao atualizar status.");
+              }}
+            >
               <SelectTrigger
-                className="h-8 min-w-[120px] border-transparent px-2.5 text-xs font-semibold text-white"
+                onClick={(event) => event.stopPropagation()}
+                className="h-8 w-full min-w-0 max-w-[180px] border-transparent px-2.5 text-xs font-semibold text-white"
                 style={{ backgroundColor: statusAtual?.cor ?? "#64748b" }}
               >
                 <SelectValue placeholder="Atualizar status" />
@@ -166,10 +175,10 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <p className="mb-2 text-xs font-medium text-slate-600">Filtros</p>
-        <div className="grid gap-2 md:grid-cols-3">
+    <div className="space-y-3 md:space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 md:rounded-xl md:p-3">
+        <p className="mb-1.5 text-[11px] font-medium text-slate-600 md:mb-2 md:text-xs">Filtros</p>
+        <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3 md:gap-2">
           <Select
             value={periodoRapido}
             onValueChange={(value) => {
@@ -178,7 +187,7 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
               setDataFim("");
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="col-span-2 h-8 text-[11px] md:col-span-1 md:h-10 md:text-sm">
               <SelectValue placeholder="Periodo" />
             </SelectTrigger>
             <SelectContent>
@@ -189,16 +198,21 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
               <SelectItem value="mes">Mes atual</SelectItem>
             </SelectContent>
           </Select>
-          <Input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
-          <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+          <Input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="h-8 text-[11px] md:h-10 md:text-sm" />
+          <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="h-8 text-[11px] md:h-10 md:text-sm" />
         </div>
       </div>
 
-      <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-4">
-        <Input value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} placeholder="Filtrar por cliente" />
+      <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-4 md:gap-2 md:rounded-xl md:p-3">
+        <Input
+          value={filtroCliente}
+          onChange={(e) => setFiltroCliente(e.target.value)}
+          placeholder="Cliente"
+          className="col-span-2 h-8 text-[11px] placeholder:text-[11px] md:col-span-1 md:h-10 md:text-sm md:placeholder:text-sm"
+        />
         <Select value={filtroRepresentante} onValueChange={setFiltroRepresentante}>
-          <SelectTrigger>
-            <SelectValue placeholder="Filtrar por representante" />
+          <SelectTrigger className="h-8 text-[11px] md:h-10 md:text-sm">
+            <SelectValue placeholder="Representante" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os representantes</SelectItem>
@@ -210,8 +224,8 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
           </SelectContent>
         </Select>
         <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-          <SelectTrigger>
-            <SelectValue placeholder="Filtrar por status" />
+          <SelectTrigger className="h-8 text-[11px] md:h-10 md:text-sm">
+            <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os status</SelectItem>
@@ -223,7 +237,7 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
           </SelectContent>
         </Select>
         <Select value={apenasAtrasados} onValueChange={setApenasAtrasados}>
-          <SelectTrigger>
+          <SelectTrigger className="col-span-2 h-8 text-[11px] md:col-span-1 md:h-10 md:text-sm">
             <SelectValue placeholder="Atraso" />
           </SelectTrigger>
           <SelectContent>
@@ -233,15 +247,92 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
         </Select>
       </div>
 
-      <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full border-collapse text-sm">
+      <div className="space-y-2 lg:hidden">
+        {filtrados.map((pedido) => {
+          const atrasado = isAtrasado(pedido.prazoEntrega);
+          const proximo = isPrazoProximo(pedido.prazoEntrega);
+          const statusAtual = status.find((s) => s.id === pedido.statusAtual);
+          return (
+            <div key={pedido.numeroPedido} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{pedido.cliente}</p>
+                  <p className="text-xs text-slate-500">{pedido.representante}</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                  NF {pedido.numeroNF}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <p>
+                  <span className="font-medium text-slate-700">Faturamento:</span> {formatarData(pedido.dataFaturamento)}
+                </p>
+                <p>
+                  <span className="font-medium text-slate-700">Expedicao:</span> {formatarData(pedido.dataExpedicao)}
+                </p>
+                <p className={atrasado ? "font-semibold text-red-600" : proximo ? "font-semibold text-amber-600" : "text-slate-700"}>
+                  <span className="font-medium text-slate-700">Prazo:</span> {diasParaPrazo(pedido.prazoEntrega)} dias
+                </p>
+                <p>
+                  <span className="font-medium text-slate-700">Entrega:</span> {pedido.dataEntrega ? formatarData(pedido.dataEntrega) : "-"}
+                </p>
+              </div>
+
+              {canManage ? (
+                <Select
+                  value={pedido.statusAtual}
+                  onValueChange={async (value) => {
+                    const result = await updatePedidoStatus(pedido.numeroPedido, value);
+                    if (!result.ok) setErroAtualizacao(result.erro ?? "Erro ao atualizar status.");
+                  }}
+                >
+                  <SelectTrigger
+                    onClick={(event) => event.stopPropagation()}
+                    className="h-9 border-transparent px-2.5 text-xs font-semibold text-white"
+                    style={{ backgroundColor: statusAtual?.cor ?? "#64748b" }}
+                  >
+                    <SelectValue placeholder="Atualizar status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {status.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span
+                  className="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-semibold text-white"
+                  style={{ backgroundColor: statusAtual?.cor ?? "#64748b" }}
+                >
+                  {statusAtual?.nome ?? "Sem status"}
+                </span>
+              )}
+              {canManage && onPedidoClick ? (
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                  onClick={() => onPedidoClick(pedido)}
+                >
+                  Ver e editar pedido
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block">
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead className="bg-slate-100 text-slate-700">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th
+                    <th
                     key={header.id}
-                    className="cursor-pointer px-3 py-2 text-left font-medium"
+                      className="cursor-pointer px-3 py-2 text-left font-medium break-words"
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
@@ -267,6 +358,9 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
                   layout
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
+                  onClick={() => {
+                    if (canManage && onPedidoClick) onPedidoClick(row.original);
+                  }}
                   className={
                     `${corSublinhado} ${
                       atrasado
@@ -274,11 +368,11 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
                         : proximo
                           ? "bg-amber-50/60"
                           : "border-t border-slate-100"
-                    }`
+                    } ${canManage && onPedidoClick ? "cursor-pointer hover:bg-blue-50/50" : ""}`
                   }
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-3 align-top text-slate-700">
+                    <td key={cell.id} className="max-w-0 px-3 py-3 align-top break-words text-slate-700">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -288,6 +382,7 @@ export function PedidosTable({ dados, canManage }: PedidosTableProps) {
           </tbody>
         </table>
       </div>
+      {erroAtualizacao ? <p className="text-sm text-red-600">{erroAtualizacao}</p> : null}
     </div>
   );
 }
