@@ -26,7 +26,7 @@ export function LoginPage() {
   const [novaSenha, setNovaSenha] = useState("");
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
-  const isDevExplicit = String(import.meta.env.VITE_NODE_ENV || "").toLowerCase() === "development";
+  const isDevExplicit = import.meta.env.DEV;
 
   const login = useAuthStore((state) => state.login);
   const registrarRepresentante = useAuthStore((state) => state.registrarRepresentante);
@@ -67,7 +67,7 @@ export function LoginPage() {
 
   const onCriarConta = async () => {
     limparMensagens();
-    const result = await registrarRepresentante({ nome, email, login: loginValue, senha });
+    const result = await registrarRepresentante({ nome, email, senha });
     if (!result.ok) {
       setErro(result.erro ?? "Falha ao criar conta.");
       return;
@@ -115,10 +115,10 @@ export function LoginPage() {
         <p className="text-xs font-medium text-blue-600">Acesso ao sistema</p>
         <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">{titulo}</h1>
 
-        {(modo === "login" || modo === "criar" || modo === "esqueci") && (
+        {(modo === "login" || modo === "esqueci") && (
           <div className="space-y-1">
-            <Label>{modo === "esqueci" ? "Login ou e-mail" : "Login"}</Label>
-            <Input value={loginValue} onChange={(e) => setLoginValue(e.target.value)} />
+            <Label>E-mail</Label>
+            <Input type="email" value={loginValue} onChange={(e) => setLoginValue(e.target.value)} />
           </div>
         )}
 

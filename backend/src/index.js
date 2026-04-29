@@ -4,7 +4,6 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import {
   ensureDb,
-  findUserByLogin,
   findUserByLoginOrEmail,
   listUsers,
   createUser,
@@ -51,16 +50,16 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/api/auth/register", async (req, res) => {
-  const { nome, email, login, senha } = req.body ?? {};
-  if (!nome || !email || !login || !senha) {
-    return res.status(400).json({ message: "Informe nome, email, login e senha." });
+  const { nome, email, senha } = req.body ?? {};
+  if (!nome || !email || !senha) {
+    return res.status(400).json({ message: "Informe nome, email e senha." });
   }
 
   try {
     const user = await createUser({
       nome,
       email,
-      login,
+      login: email,
       senha,
       tipo: "representante",
       ativo: true,
@@ -77,7 +76,7 @@ app.post("/api/auth/register", async (req, res) => {
     return res.status(201).json({ ok: true, message: "Conta criada. Verifique seu e-mail para confirmar." });
   } catch (error) {
     if (String(error?.code) === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "Login ou e-mail ja cadastrado." });
+      return res.status(409).json({ message: "E-mail ja cadastrado." });
     }
     throw error;
   }
@@ -124,14 +123,15 @@ app.post("/api/auth/reset-password", async (req, res) => {
 });
 
 app.post("/api/auth/login", async (req, res) => {
-  const { login, senha } = req.body ?? {};
-  if (!login || !senha) {
-    return res.status(400).json({ message: "Informe login e senha." });
+  const { email, login, senha } = req.body ?? {};
+  const emailOrLogin = String(email || login || "").trim();
+  if (!emailOrLogin || !senha) {
+    return res.status(400).json({ message: "Informe e-mail e senha." });
   }
 
-  const user = await findUserByLogin(login);
+  const user = await findUserByLoginOrEmail(emailOrLogin);
   if (!user || user.passwordHash !== sha256(senha)) {
-    return res.status(401).json({ message: "Login ou senha invalidos." });
+    return res.status(401).json({ message: "E-mail ou senha invalidos." });
   }
   if (!user.ativo) return res.status(403).json({ message: "Usuario inativo. Contate o administrador." });
   if (!user.confirmadoEm) return res.status(403).json({ message: "Conta ainda nao confirmada por e-mail." });
@@ -166,20 +166,20 @@ app.get("/api/users", requireAuth, requireAdmin, async (_req, res) => {
 });
 
 app.post("/api/users", requireAuth, requireAdmin, async (req, res) => {
-  const { nome, email, login, senha, tipo } = req.body ?? {};
-  if (!nome || !login || !senha || !tipo) {
-    return res.status(400).json({ message: "Informe nome, login, senha e tipo." });
+  const { nome, email, senha, tipo } = req.body ?? {};
+  if (!nome || !email || !senha || !tipo) {
+    return res.status(400).json({ message: "Informe nome, e-mail, senha e tipo." });
   }
   if (!["administrador", "diretoria", "representante"].includes(tipo)) {
     return res.status(400).json({ message: "Tipo de usuario invalido." });
   }
 
   try {
-    const novo = await createUser({ nome, email, login, tipo, senha, confirmado: true, ativo: true });
+    const novo = await createUser({ nome, email, login: email, tipo, senha, confirmado: true, ativo: true });
     return res.status(201).json(novo);
   } catch (error) {
     if (String(error?.code) === "ER_DUP_ENTRY") {
-      return res.status(409).json({ message: "Login ja existe." });
+      return res.status(409).json({ message: "E-mail ja existe." });
     }
     throw error;
   }

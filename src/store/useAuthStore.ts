@@ -15,11 +15,11 @@ type AuthState = {
   usuarios: Usuario[];
   usuarioAtual: Usuario | null;
   token: string | null;
-  login: (login: string, senha: string) => Promise<{ ok: boolean; erro?: string }>;
+  login: (email: string, senha: string) => Promise<{ ok: boolean; erro?: string }>;
   logout: () => void;
   addUsuario: (payload: NovoUsuario) => Promise<{ ok: boolean; erro?: string }>;
   loadUsuarios: () => Promise<void>;
-  registrarRepresentante: (payload: { nome: string; email: string; login: string; senha: string }) => Promise<{ ok: boolean; erro?: string }>;
+  registrarRepresentante: (payload: { nome: string; email: string; senha: string }) => Promise<{ ok: boolean; erro?: string }>;
   confirmarConta: (token: string) => Promise<{ ok: boolean; erro?: string }>;
   esqueciSenha: (loginOuEmail: string) => Promise<{ ok: boolean; erro?: string }>;
   redefinirSenha: (token: string, senha: string) => Promise<{ ok: boolean; erro?: string }>;
@@ -32,11 +32,11 @@ export const useAuthStore = create<AuthState>()(
       usuarioAtual: null,
       token: null,
 
-      login: async (login, senha) => {
+      login: async (email, senha) => {
         try {
           const data = await apiRequest<{ token: string; usuario: Usuario }>("/api/auth/login", {
             method: "POST",
-            body: { login, senha }
+            body: { email, senha }
           });
           set({ usuarioAtual: data.usuario, token: data.token });
           if (data.usuario.tipo === "administrador") {
