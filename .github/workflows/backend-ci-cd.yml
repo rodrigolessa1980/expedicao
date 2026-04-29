@@ -72,6 +72,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Normalize deploy target
+        id: target
+        shell: bash
+        env:
+          RAW_HOST: ${{ secrets.SERVER_HOST }}
+          RAW_USER: ${{ secrets.SERVER_USER }}
+          RAW_PORT: ${{ secrets.SERVER_PORT }}
+        run: |
+          set -euo pipefail
+          HOST="$(printf '%s' "${RAW_HOST:-}" | tr -d '\r' | xargs)"
+          USERNAME="$(printf '%s' "${RAW_USER:-}" | tr -d '\r' | xargs)"
+          PORT="$(printf '%s' "${RAW_PORT:-}" | tr -d '\r' | xargs)"
+
+          if [ -z "${HOST}" ]; then
+            echo "Secret SERVER_HOST nao configurado."
+            exit 1
+          fi
+          if [ -z "${USERNAME}" ]; then
+            echo "Secret SERVER_USER nao configurado."
+            exit 1
+          fi
+
+          HOST="${HOST#ssh://}"
+          HOST="${HOST#http://}"
+          HOST="${HOST#https://}"
+
+          if [[ "${HOST}" == *"@"* ]]; then
+            HOST="${HOST##*@}"
+          fi
+
+          if [[ "${HOST}" == *:* ]]; then
+            PORT_FROM_HOST="${HOST##*:}"
+            HOST="${HOST%:*}"
+            if [ -z "${PORT}" ]; then
+              PORT="${PORT_FROM_HOST}"
+            fi
+          fi
+
+          if [ -z "${PORT}" ]; then
+            PORT="22"
+          fi
+
+          if [ -z "${HOST}" ]; then
+            echo "SERVER_HOST invalido apos normalizacao."
+            exit 1
+          fi
+
+          echo "host=${HOST}" >> "${GITHUB_OUTPUT}"
+          echo "user=${USERNAME}" >> "${GITHUB_OUTPUT}"
+          echo "port=${PORT}" >> "${GITHUB_OUTPUT}"
+
       - name: Setup SSH key (primary auth)
         shell: bash
         run: |
@@ -83,25 +134,26 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.SSH }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ steps.target.outputs.port }}" -H "${{ steps.target.outputs.host }}" >> ~/.ssh/known_hosts
 
       - name: Test SSH connection
         shell: bash
         run: |
           set -euo pipefail
-          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "echo 'SSH conectado com sucesso'"
+          ssh -p "${{ steps.target.outputs.port }}" "${{ steps.target.outputs.user }}@${{ steps.target.outputs.host }}" "echo 'SSH conectado com sucesso'"
 
       - name: Sync project folder to server
         shell: bash
         run: |
           set -euo pipefail
-          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "mkdir -p /opt/expedicao"
+          ssh -p "${{ steps.target.outputs.port }}" "${{ steps.target.outputs.user }}@${{ steps.target.outputs.host }}" "mkdir -p /opt/expedicao"
           rsync -az --delete \
+            -e "ssh -p ${{ steps.target.outputs.port }}" \
             --exclude ".git" \
             --exclude ".github" \
             --exclude "node_modules" \
             --exclude "backend/node_modules" \
-            ./ "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/expedicao/"
+            ./ "${{ steps.target.outputs.user }}@${{ steps.target.outputs.host }}:/opt/expedicao/"
 
       - name: Clone env files from GitHub Secrets
         shell: bash
@@ -118,14 +170,14 @@ jobs:
             echo "Secret BACKEND_ENV nao configurado."
             exit 1
           fi
-          printf '%s\n' "${ROOT_ENV}" | ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "cat > /opt/expedicao/.env"
-          printf '%s\n' "${BACKEND_ENV}" | ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "cat > /opt/expedicao/backend/.env"
+          printf '%s\n' "${ROOT_ENV}" | ssh -p "${{ steps.target.outputs.port }}" "${{ steps.target.outputs.user }}@${{ steps.target.outputs.host }}" "cat > /opt/expedicao/.env"
+          printf '%s\n' "${BACKEND_ENV}" | ssh -p "${{ steps.target.outputs.port }}" "${{ steps.target.outputs.user }}@${{ steps.target.outputs.host }}" "cat > /opt/expedicao/backend/.env"
 
       - name: Deploy backend containers
         shell: bash
         run: |
           set -euo pipefail
-          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "
+          ssh -p "${{ steps.target.outputs.port }}" "${{ steps.target.outputs.user }}@${{ steps.target.outputs.host }}" "
             set -e
             cd /opt/expedicao
             docker login ghcr.io -u '${{ github.actor }}' -p '${{ secrets.GITHUB_TOKEN }}'
