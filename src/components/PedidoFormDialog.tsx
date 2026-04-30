@@ -43,7 +43,6 @@ export function PedidoFormDialog({
   const addPedido = useExportStore((state) => state.addPedido);
   const updatePedido = useExportStore((state) => state.updatePedido);
   const usuarios = useAuthStore((state) => state.usuarios);
-  const representantes = usuarios.filter((u) => u.tipo === "representante");
   const [openInterno, setOpenInterno] = useState(false);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -74,6 +73,14 @@ export function PedidoFormDialog({
     }
     setForm(initialValues);
   }, [aberto, initialPedido, mode]);
+
+  const representantes = useMemo(() => {
+    const ativos = usuarios.filter((u) => u.tipo === "representante" && u.ativo !== false).map((u) => u.nome);
+    if (form.representante && !ativos.includes(form.representante)) {
+      return [form.representante, ...ativos];
+    }
+    return ativos;
+  }, [usuarios, form.representante]);
 
   const onSubmit = async () => {
     if (mode === "edit" && !numeroPedidoOriginal) {
