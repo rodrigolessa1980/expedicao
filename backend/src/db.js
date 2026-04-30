@@ -59,9 +59,42 @@ function mapPedido(row) {
     dataExpedicao: row.data_expedicao,
     prazoEntrega: row.prazo_entrega,
     dataEntrega: row.data_entrega || "",
-    statusAtual: row.status_atual
+    statusAtual: row.status_atual,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null
   };
 }
+
+function mapPedidoChangeLog(row) {
+  return {
+    id: row.id,
+    pedidoNumero: row.pedido_numero,
+    field: row.field_name,
+    fieldLabel: row.field_label,
+    from: row.from_value || "",
+    to: row.to_value || "",
+    changedAt: row.changed_at,
+    changedBy: row.changed_by
+  };
+}
+
+function normalizeFieldValue(value) {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value);
+}
+
+const trackedPedidoFields = [
+  { field: "numeroPedido", column: "numero_pedido", label: "Numero do Pedido" },
+  { field: "representante", column: "representante", label: "Representante (opcional)" },
+  { field: "numeroNF", column: "numero_nf", label: "Numero NF" },
+  { field: "cliente", column: "cliente", label: "Cliente" },
+  { field: "dataFaturamento", column: "data_faturamento", label: "Data Faturamento" },
+  { field: "dataExpedicao", column: "data_expedicao", label: "Data Expedicao" },
+  { field: "prazoEntrega", column: "prazo_entrega", label: "Prazo de Entrega" },
+  { field: "dataEntrega", column: "data_entrega", label: "Data da Entrega" },
+  { field: "statusAtual", column: "status_atual", label: "Status" }
+];
 
 export async function ensureDb() {
   const conn = getPool();
@@ -117,13 +150,33 @@ export async function ensureDb() {
       prazo_entrega DATE NOT NULL,
       data_entrega DATE NULL,
       status_atual VARCHAR(80) NOT NULL,
+      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       CONSTRAINT fk_pedidos_status FOREIGN KEY (status_atual) REFERENCES status(id)
     )
   `);
   await ensureColumn("status", "updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await ensureColumn("pedidos", "updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+  await ensureColumn("pedidos", "created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await conn.query("ALTER TABLE pedidos MODIFY COLUMN representante VARCHAR(120) NULL");
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS pedido_change_logs (
+      id VARCHAR(64) PRIMARY KEY,
+      pedido_numero VARCHAR(60) NOT NULL,
+      field_name VARCHAR(60) NOT NULL,
+      field_label VARCHAR(120) NOT NULL,
+      from_value TEXT NULL,
+      to_value TEXT NULL,
+      changed_by VARCHAR(120) NOT NULL,
+      changed_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      CONSTRAINT fk_pedido_logs_pedido FOREIGN KEY (pedido_numero) REFERENCES pedidos(numero_pedido)
+    )
+  `);
+  try {
+    await conn.query("CREATE INDEX idx_pedido_change_logs_pedido_changed_at ON pedido_change_logs (pedido_numero, changed_at)");
+  } catch (error) {
+    if (String(error?.code) !== "ER_DUP_KEYNAME") throw error;
+  }
   try {
     await conn.query("CREATE INDEX idx_pedidos_updated_at_numero ON pedidos (updated_at, numero_pedido)");
   } catch (error) {
@@ -290,8 +343,8 @@ export async function createOrder(payload) {
   const now = new Date();
   await conn.query(
     `INSERT INTO pedidos
-      (numero_pedido, representante, numero_nf, cliente, data_faturamento, data_expedicao, prazo_entrega, data_entrega, status_atual, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (numero_pedido, representante, numero_nf, cliente, data_faturamento, data_expedicao, prazo_entrega, data_entrega, status_atual, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       payload.numeroPedido,
       payload.representante || null,
@@ -302,6 +355,7 @@ export async function createOrder(payload) {
       payload.prazoEntrega,
       dataEntrega,
       payload.statusAtual,
+      now,
       now
     ]
   );
@@ -314,51 +368,89 @@ export async function createOrder(payload) {
     dataExpedicao: payload.dataExpedicao,
     prazoEntrega: payload.prazoEntrega,
     dataEntrega: dataEntrega || "",
-    statusAtual: payload.statusAtual
+    statusAtual: payload.statusAtual,
+    createdAt: now,
+    updatedAt: now
   };
 }
 
-export async function updateOrder(numeroPedidoOriginal, payload) {
+export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
   const conn = getPool();
-  const [rows] = await conn.query("SELECT * FROM pedidos WHERE numero_pedido = ? LIMIT 1", [numeroPedidoOriginal]);
-  if (rows.length === 0) return null;
-  const current = rows[0];
+  const trx = await conn.getConnection();
+  try {
+    await trx.beginTransaction();
+    const [rows] = await trx.query("SELECT * FROM pedidos WHERE numero_pedido = ? LIMIT 1 FOR UPDATE", [numeroPedidoOriginal]);
+    if (rows.length === 0) {
+      await trx.rollback();
+      return null;
+    }
+    const current = rows[0];
   const dataEntrega =
     payload.statusAtual === "finalizado"
       ? payload.dataEntrega || current.data_entrega || new Date().toISOString().slice(0, 10)
       : payload.dataEntrega || null;
+    const now = new Date();
 
-  await conn.query(
-    `UPDATE pedidos
-      SET numero_pedido = ?, representante = ?, numero_nf = ?, cliente = ?, data_faturamento = ?, data_expedicao = ?,
-          prazo_entrega = ?, data_entrega = ?, status_atual = ?, updated_at = ?
-     WHERE numero_pedido = ?`,
-    [
-      payload.numeroPedido,
-      payload.representante || null,
-      payload.numeroNF,
-      payload.cliente,
-      payload.dataFaturamento,
-      payload.dataExpedicao,
-      payload.prazoEntrega,
-      dataEntrega,
-      payload.statusAtual,
-      new Date(),
-      numeroPedidoOriginal
-    ]
-  );
+    await trx.query(
+      `UPDATE pedidos
+        SET numero_pedido = ?, representante = ?, numero_nf = ?, cliente = ?, data_faturamento = ?, data_expedicao = ?,
+            prazo_entrega = ?, data_entrega = ?, status_atual = ?, updated_at = ?
+      WHERE numero_pedido = ?`,
+      [
+        payload.numeroPedido,
+        payload.representante || null,
+        payload.numeroNF,
+        payload.cliente,
+        payload.dataFaturamento,
+        payload.dataExpedicao,
+        payload.prazoEntrega,
+        dataEntrega,
+        payload.statusAtual,
+        now,
+        numeroPedidoOriginal
+      ]
+    );
 
-  return {
-    numeroPedido: payload.numeroPedido,
-    representante: payload.representante || "",
-    numeroNF: payload.numeroNF,
-    cliente: payload.cliente,
-    dataFaturamento: payload.dataFaturamento,
-    dataExpedicao: payload.dataExpedicao,
-    prazoEntrega: payload.prazoEntrega,
-    dataEntrega: dataEntrega || "",
-    statusAtual: payload.statusAtual
-  };
+    const updatedSnapshot = {
+      numeroPedido: payload.numeroPedido,
+      representante: payload.representante || "",
+      numeroNF: payload.numeroNF,
+      cliente: payload.cliente,
+      dataFaturamento: payload.dataFaturamento,
+      dataExpedicao: payload.dataExpedicao,
+      prazoEntrega: payload.prazoEntrega,
+      dataEntrega: dataEntrega || "",
+      statusAtual: payload.statusAtual
+    };
+    const logRows = trackedPedidoFields
+      .map((entry) => {
+        const from = normalizeFieldValue(current[entry.column]);
+        const to = normalizeFieldValue(updatedSnapshot[entry.field]);
+        if (from === to) return null;
+        return [randomUUID(), payload.numeroPedido, entry.field, entry.label, from || null, to || null, changedBy || "Sistema", now];
+      })
+      .filter(Boolean);
+    for (const row of logRows) {
+      await trx.query(
+        `INSERT INTO pedido_change_logs
+          (id, pedido_numero, field_name, field_label, from_value, to_value, changed_by, changed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        row
+      );
+    }
+    await trx.commit();
+
+    return {
+      ...updatedSnapshot,
+      createdAt: current.created_at || null,
+      updatedAt: now
+    };
+  } catch (error) {
+    await trx.rollback();
+    throw error;
+  } finally {
+    trx.release();
+  }
 }
 
 export async function updateOrderStatus(numeroPedido, statusId) {
@@ -420,4 +512,23 @@ export async function listOrderChangesByRole(user, { since, limit = 500 }) {
   }));
   const nextSince = rows.length > 0 ? rows[rows.length - 1].updated_at : since;
   return { changes, nextSince };
+}
+
+export async function listOrderLogsByRole(user, numeroPedido) {
+  const conn = getPool();
+  if (user.tipo === "representante") {
+    const [allowed] = await conn.query("SELECT 1 FROM pedidos WHERE numero_pedido = ? AND representante = ? LIMIT 1", [
+      numeroPedido,
+      user.nome
+    ]);
+    if (allowed.length === 0) return null;
+  }
+  const [rows] = await conn.query(
+    `SELECT id, pedido_numero, field_name, field_label, from_value, to_value, changed_by, changed_at
+      FROM pedido_change_logs
+      WHERE pedido_numero = ?
+      ORDER BY changed_at DESC, id DESC`,
+    [numeroPedido]
+  );
+  return rows.map(mapPedidoChangeLog);
 }

@@ -14,6 +14,30 @@ export type Pedido = {
   prazoEntrega: string;
   dataEntrega: string;
   statusAtual: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type PedidoField =
+  | "numeroPedido"
+  | "representante"
+  | "numeroNF"
+  | "cliente"
+  | "dataFaturamento"
+  | "dataExpedicao"
+  | "prazoEntrega"
+  | "dataEntrega"
+  | "statusAtual";
+
+export type PedidoChangeLog = {
+  id: string;
+  pedidoNumero: string;
+  field: PedidoField;
+  fieldLabel: string;
+  from: string;
+  to: string;
+  changedAt: string;
+  changedBy: string;
 };
 
 export type TipoUsuario = "administrador" | "representante" | "diretoria";

@@ -19,7 +19,8 @@ import {
   createOrder,
   updateOrder,
   updateOrderStatus,
-  listOrderChangesByRole
+  listOrderChangesByRole,
+  listOrderLogsByRole
 } from "./db.js";
 import { sha256 } from "./security.js";
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
@@ -336,7 +337,7 @@ app.put("/api/orders/:numeroPedido", requireAuth, requireAdmin, async (req, res)
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
 
   try {
-    const atualizado = await updateOrder(req.params.numeroPedido, payload);
+    const atualizado = await updateOrder(req.params.numeroPedido, payload, req.user?.nome || "Sistema");
     if (!atualizado) return res.status(404).json({ message: "Pedido nao encontrado." });
     return res.json(atualizado);
   } catch (error) {
@@ -348,6 +349,12 @@ app.put("/api/orders/:numeroPedido", requireAuth, requireAdmin, async (req, res)
     }
     throw error;
   }
+});
+
+app.get("/api/orders/:numeroPedido/logs", requireAuth, async (req, res) => {
+  const logs = await listOrderLogsByRole(req.user, req.params.numeroPedido);
+  if (logs === null) return res.status(404).json({ message: "Pedido nao encontrado." });
+  return res.json(logs);
 });
 
 app.patch("/api/orders/:numeroPedido/status", requireAuth, requireAdmin, async (req, res) => {

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Pedido, Status } from "../types";
+import type { Pedido, PedidoChangeLog, Status } from "../types";
 import { apiRequest } from "../services/api";
 import { useAuthStore } from "./useAuthStore";
 
@@ -7,9 +7,19 @@ type PedidoInput = Omit<Pedido, "numeroPedido"> & { numeroPedido: string };
 type StatusInput = Omit<Status, "id"> & { id?: string };
 type ActionResult = { ok: boolean; erro?: string };
 
+type PedidoLogsMap = Record<string, PedidoChangeLog[]>;
+
+function normalizeLog(raw: PedidoChangeLog): PedidoChangeLog {
+  return {
+    ...raw,
+    changedAt: new Date(raw.changedAt).toISOString(),
+  };
+}
+
 type ExportState = {
   pedidos: Pedido[];
   status: Status[];
+  pedidoLogs: PedidoLogsMap;
   loading: boolean;
   loadPedidos: () => Promise<void>;
   loadStatus: () => Promise<void>;
@@ -17,6 +27,7 @@ type ExportState = {
   clearData: () => void;
   addPedido: (pedido: PedidoInput) => Promise<ActionResult>;
   updatePedido: (numeroPedidoOriginal: string, pedido: PedidoInput) => Promise<ActionResult>;
+  loadPedidoLogs: (numeroPedido: string) => Promise<void>;
   updatePedidoStatus: (numeroPedido: string, statusId: string) => Promise<ActionResult>;
   addStatus: (payload: StatusInput) => Promise<ActionResult>;
   updateStatus: (id: string, payload: Omit<StatusInput, "id">) => Promise<ActionResult>;
@@ -40,12 +51,15 @@ function normalizePedido(pedido: Pedido): Pedido {
     dataExpedicao: normalizeDate(pedido.dataExpedicao),
     prazoEntrega: normalizeDate(pedido.prazoEntrega),
     dataEntrega: normalizeDate(pedido.dataEntrega),
+    createdAt: pedido.createdAt ?? null,
+    updatedAt: pedido.updatedAt ?? null,
   };
 }
 
-export const useExportStore = create<ExportState>()((set) => ({
+export const useExportStore = create<ExportState>()((set, get) => ({
   pedidos: [],
   status: [],
+  pedidoLogs: {},
   loading: false,
 
   clearData: () => set({ pedidos: [], status: [], loading: false }),
@@ -105,15 +119,37 @@ export const useExportStore = create<ExportState>()((set) => ({
         token,
         body: pedido,
       });
-      set((state) => ({
-        pedidos: state.pedidos.map((item) =>
-          item.numeroPedido === numeroPedidoOriginal ? normalizePedido(atualizado) : item,
-        ),
-      }));
+      const atualizadoNormalizado = normalizePedido(atualizado);
+      set((state) => {
+        const novoNumeroPedido = atualizadoNormalizado.numeroPedido;
+        const pedidoLogsAtualizado: PedidoLogsMap = { ...state.pedidoLogs };
+        if (numeroPedidoOriginal !== novoNumeroPedido) {
+          delete pedidoLogsAtualizado[numeroPedidoOriginal];
+        }
+        return {
+          pedidos: state.pedidos.map((item) =>
+            item.numeroPedido === numeroPedidoOriginal ? atualizadoNormalizado : item,
+          ),
+          pedidoLogs: pedidoLogsAtualizado,
+        };
+      });
+      await get().loadPedidoLogs(atualizadoNormalizado.numeroPedido);
       return { ok: true };
     } catch (error) {
       return { ok: false, erro: error instanceof Error ? error.message : "Erro ao editar pedido." };
     }
+  },
+
+  loadPedidoLogs: async (numeroPedido) => {
+    const token = getToken();
+    if (!token || !numeroPedido) return;
+    const logs = await apiRequest<PedidoChangeLog[]>(`/api/orders/${numeroPedido}/logs`, { token });
+    set((state) => ({
+      pedidoLogs: {
+        ...state.pedidoLogs,
+        [numeroPedido]: logs.map(normalizeLog),
+      },
+    }));
   },
 
   updatePedidoStatus: async (numeroPedido, statusId) => {
