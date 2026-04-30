@@ -11,7 +11,6 @@ const confirmacaoPorToken = new Map<string, Promise<{ ok: boolean; erro?: string
 
 export function LoginPage() {
   const initialPath = window.location.pathname;
-  const initialToken = new URLSearchParams(window.location.search).get("token") ?? "";
   const initialModo: Modo =
     initialPath.includes("confirmar-conta")
       ? "confirmar"
@@ -25,11 +24,14 @@ export function LoginPage() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [emailConfirmacao, setEmailConfirmacao] = useState("");
-  const [token, setToken] = useState(initialToken);
   const [novaSenha, setNovaSenha] = useState("");
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
-  const [confirmandoLink, setConfirmandoLink] = useState(Boolean(initialModo === "confirmar" && initialToken));
+  const [confirmandoLink, setConfirmandoLink] = useState(() => {
+    if (initialModo !== "confirmar") return false;
+    const t = new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
+    return Boolean(t);
+  });
   const confirmacaoGen = useRef(0);
   const isDevExplicit = import.meta.env.DEV;
 
@@ -147,20 +149,34 @@ export function LoginPage() {
       setErro(result.erro ?? "Falha ao solicitar redefinicao.");
       return;
     }
-    setSucesso("Se o usuario existir, o e-mail de redefinicao foi enviado.");
-    setModo("redefinir");
+    setSucesso("Se o usuario existir, enviamos o link para redefinir a senha. Abra o e-mail e use o link.");
+    setModo("login");
   };
 
   const onRedefinir = async () => {
     limparMensagens();
-    const result = await redefinirSenha(token, novaSenha);
+    const resetToken = new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
+    if (!resetToken) {
+      setErro("Link invalido ou incompleto. Solicite novamente em Esqueci minha senha.");
+      return;
+    }
+    if (!novaSenha.trim()) {
+      setErro("Informe a nova senha.");
+      return;
+    }
+    const result = await redefinirSenha(resetToken, novaSenha);
     if (!result.ok) {
       setErro(result.erro ?? "Falha ao redefinir senha.");
       return;
     }
-    setSucesso("Senha atualizada com sucesso.");
+    const path = window.location.pathname.replace(/\/?redefinir-senha\/?$/i, "/") || "/";
+    history.replaceState({}, "", path);
+    setNovaSenha("");
+    setSucesso("Senha atualizada. Voce ja pode entrar com a nova senha.");
     setModo("login");
   };
+
+  const tokenRedefinicaoNaUrl = new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-gray-50 p-3 sm:p-4">
@@ -168,42 +184,99 @@ export function LoginPage() {
         <p className="text-xs font-medium text-blue-600">Acesso ao sistema</p>
         <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">{titulo}</h1>
 
-        {(modo === "login" || modo === "esqueci") && (
-          <div className="space-y-1">
-            <Label>E-mail</Label>
-            <Input type="email" value={loginValue} onChange={(e) => setLoginValue(e.target.value)} />
-          </div>
-        )}
+        {modo === "login" ? (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onLogin();
+            }}
+          >
+            <div className="space-y-1">
+              <Label>E-mail</Label>
+              <Input type="email" value={loginValue} onChange={(e) => setLoginValue(e.target.value)} autoComplete="username" />
+            </div>
+            <div className="space-y-1">
+              <Label>Senha</Label>
+              <Input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" />
+            </div>
+            {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+            {sucesso ? <p className="text-sm text-emerald-700">{sucesso}</p> : null}
+            <Button type="submit" className="w-full">
+              Entrar
+            </Button>
+          </form>
+        ) : null}
 
-        {modo === "criar" && (
-          <>
+        {modo === "esqueci" ? (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onEsqueci();
+            }}
+          >
+            <div className="space-y-1">
+              <Label>E-mail</Label>
+              <Input type="email" value={loginValue} onChange={(e) => setLoginValue(e.target.value)} autoComplete="email" />
+            </div>
+            {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+            {sucesso ? <p className="text-sm text-emerald-700">{sucesso}</p> : null}
+            <Button type="submit" className="w-full">
+              Enviar link
+            </Button>
+          </form>
+        ) : null}
+
+        {modo === "criar" ? (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onCriarConta();
+            }}
+          >
             <div className="space-y-1">
               <Label>Nome</Label>
-              <Input value={nome} onChange={(e) => setNome(e.target.value)} />
+              <Input value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="name" />
             </div>
             <div className="space-y-1">
               <Label>E-mail</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
             </div>
-          </>
-        )}
+            <div className="space-y-1">
+              <Label>Senha</Label>
+              <Input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="new-password" />
+            </div>
+            {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+            {sucesso ? <p className="text-sm text-emerald-700">{sucesso}</p> : null}
+            <Button type="submit" className="w-full">
+              Criar conta
+            </Button>
+          </form>
+        ) : null}
 
-        {(modo === "login" || modo === "criar") && (
-          <div className="space-y-1">
-            <Label>Senha</Label>
-            <Input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} />
-          </div>
-        )}
-
-        {modo === "confirmar" && (
-          <div className="space-y-2">
-            <p className="text-sm text-slate-600">
-              Abra o link enviado ao seu e-mail para confirmar automaticamente. Se nao recebeu ou o link expirou, informe o
-              e-mail cadastrado abaixo.
-            </p>
-            {confirmandoLink ? (
+        {modo === "confirmar" ? (
+          confirmandoLink ? (
+            <div className="space-y-2">
+              <p className="text-sm text-slate-600">
+                Abra o link enviado ao seu e-mail para confirmar automaticamente. Se nao recebeu ou o link expirou, informe o
+                e-mail cadastrado abaixo.
+              </p>
               <p className="text-sm font-medium text-slate-700">Confirmando sua conta pelo link...</p>
-            ) : (
+            </div>
+          ) : (
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void onReenviarConfirmacao();
+              }}
+            >
+              <p className="text-sm text-slate-600">
+                Abra o link enviado ao seu e-mail para confirmar automaticamente. Se nao recebeu ou o link expirou, informe o
+                e-mail cadastrado abaixo.
+              </p>
               <div className="space-y-1">
                 <Label>E-mail</Label>
                 <Input
@@ -214,48 +287,56 @@ export function LoginPage() {
                   autoComplete="email"
                 />
               </div>
-            )}
+              {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+              {sucesso ? <p className="text-sm text-emerald-700">{sucesso}</p> : null}
+              <Button type="submit" className="w-full">
+                Reenviar e-mail de confirmacao
+              </Button>
+            </form>
+          )
+        ) : null}
+
+        {modo === "redefinir" && !tokenRedefinicaoNaUrl ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Para redefinir a senha e necessario abrir o link enviado ao seu e-mail apos usar Esqueci minha senha.
+            </p>
+            <Button
+              type="button"
+              className="w-full"
+              variant="outline"
+              onClick={() => {
+                limparMensagens();
+                setModo("esqueci");
+              }}
+            >
+              Solicitar link por e-mail
+            </Button>
           </div>
-        )}
+        ) : null}
 
-        {modo === "redefinir" && (
-          <div className="space-y-1">
-            <Label>Token</Label>
-            <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder="Cole o token recebido por e-mail" />
-          </div>
-        )}
-
-        {modo === "redefinir" && (
-          <div className="space-y-1">
-            <Label>Nova senha</Label>
-            <Input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
-          </div>
-        )}
-
-        {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
-        {sucesso ? <p className="text-sm text-emerald-700">{sucesso}</p> : null}
-
-        {modo === "login" ? (
-          <Button className="w-full" onClick={onLogin}>
-            Entrar
-          </Button>
-        ) : modo === "criar" ? (
-          <Button className="w-full" onClick={onCriarConta}>
-            Criar conta
-          </Button>
-        ) : modo === "esqueci" ? (
-          <Button className="w-full" onClick={onEsqueci}>
-            Enviar link
-          </Button>
-        ) : modo === "confirmar" ? (
-          <Button className="w-full" onClick={onReenviarConfirmacao} disabled={confirmandoLink}>
-            Reenviar e-mail de confirmacao
-          </Button>
-        ) : (
-          <Button className="w-full" onClick={onRedefinir}>
-            Redefinir senha
-          </Button>
-        )}
+        {modo === "redefinir" && tokenRedefinicaoNaUrl ? (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onRedefinir();
+            }}
+          >
+            <p className="text-sm text-slate-600">
+              Defina sua nova senha. O acesso foi validado pelo link enviado ao seu e-mail.
+            </p>
+            <div className="space-y-1">
+              <Label>Nova senha</Label>
+              <Input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} autoComplete="new-password" />
+            </div>
+            {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+            {sucesso ? <p className="text-sm text-emerald-700">{sucesso}</p> : null}
+            <Button type="submit" className="w-full">
+              Redefinir senha
+            </Button>
+          </form>
+        ) : null}
 
         <div className="grid grid-cols-1 gap-2 border-t border-slate-200 pt-3 sm:grid-cols-2">
           <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => { limparMensagens(); setModo("login"); }}>
