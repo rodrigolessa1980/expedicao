@@ -20,6 +20,7 @@ const initialValues = {
   dataEntrega: "",
   statusAtual: "",
 };
+const SEM_REPRESENTANTE_VALUE = "__sem_representante__";
 
 type PedidoFormDialogProps = {
   mode?: "create" | "edit";
@@ -113,12 +114,18 @@ export function PedidoFormDialog({
             <Input value={form.numeroPedido} onChange={(e) => setForm((f) => ({ ...f, numeroPedido: e.target.value }))} />
           </div>
           <div className="space-y-1">
-            <Label>Representante *</Label>
-            <Select value={form.representante} onValueChange={(value) => setForm((f) => ({ ...f, representante: value }))}>
+            <Label>Representante (opcional)</Label>
+            <Select
+              value={form.representante || SEM_REPRESENTANTE_VALUE}
+              onValueChange={(value) =>
+                setForm((f) => ({ ...f, representante: value === SEM_REPRESENTANTE_VALUE ? "" : value }))
+              }
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione um representante" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={SEM_REPRESENTANTE_VALUE}>Vincular depois</SelectItem>
                 {representantes.map((item) => (
                   <SelectItem key={item.id} value={item.nome}>
                     {item.nome}

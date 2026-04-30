@@ -296,7 +296,6 @@ app.post("/api/orders", requireAuth, requireAdmin, async (req, res) => {
   const payload = req.body ?? {};
   const required = [
     "numeroPedido",
-    "representante",
     "numeroNF",
     "cliente",
     "dataFaturamento",
@@ -326,7 +325,6 @@ app.put("/api/orders/:numeroPedido", requireAuth, requireAdmin, async (req, res)
   const payload = req.body ?? {};
   const required = [
     "numeroPedido",
-    "representante",
     "numeroNF",
     "cliente",
     "dataFaturamento",

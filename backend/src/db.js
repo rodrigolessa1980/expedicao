@@ -52,7 +52,7 @@ function mapUser(row) {
 function mapPedido(row) {
   return {
     numeroPedido: row.numero_pedido,
-    representante: row.representante,
+    representante: row.representante || "",
     numeroNF: row.numero_nf,
     cliente: row.cliente,
     dataFaturamento: row.data_faturamento,
@@ -109,7 +109,7 @@ export async function ensureDb() {
   await conn.query(`
     CREATE TABLE IF NOT EXISTS pedidos (
       numero_pedido VARCHAR(60) PRIMARY KEY,
-      representante VARCHAR(120) NOT NULL,
+      representante VARCHAR(120) NULL,
       numero_nf VARCHAR(60) NOT NULL,
       cliente VARCHAR(160) NOT NULL,
       data_faturamento DATE NOT NULL,
@@ -123,6 +123,7 @@ export async function ensureDb() {
   `);
   await ensureColumn("status", "updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await ensureColumn("pedidos", "updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+  await conn.query("ALTER TABLE pedidos MODIFY COLUMN representante VARCHAR(120) NULL");
   try {
     await conn.query("CREATE INDEX idx_pedidos_updated_at_numero ON pedidos (updated_at, numero_pedido)");
   } catch (error) {
@@ -293,7 +294,7 @@ export async function createOrder(payload) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       payload.numeroPedido,
-      payload.representante,
+      payload.representante || null,
       payload.numeroNF,
       payload.cliente,
       payload.dataFaturamento,
@@ -306,7 +307,7 @@ export async function createOrder(payload) {
   );
   return {
     numeroPedido: payload.numeroPedido,
-    representante: payload.representante,
+    representante: payload.representante || "",
     numeroNF: payload.numeroNF,
     cliente: payload.cliente,
     dataFaturamento: payload.dataFaturamento,
@@ -334,7 +335,7 @@ export async function updateOrder(numeroPedidoOriginal, payload) {
      WHERE numero_pedido = ?`,
     [
       payload.numeroPedido,
-      payload.representante,
+      payload.representante || null,
       payload.numeroNF,
       payload.cliente,
       payload.dataFaturamento,
@@ -349,7 +350,7 @@ export async function updateOrder(numeroPedidoOriginal, payload) {
 
   return {
     numeroPedido: payload.numeroPedido,
-    representante: payload.representante,
+    representante: payload.representante || "",
     numeroNF: payload.numeroNF,
     cliente: payload.cliente,
     dataFaturamento: payload.dataFaturamento,
@@ -375,7 +376,7 @@ export async function updateOrderStatus(numeroPedido, statusId) {
   ]);
   return {
     numeroPedido: current.numero_pedido,
-    representante: current.representante,
+    representante: current.representante || "",
     numeroNF: current.numero_nf,
     cliente: current.cliente,
     dataFaturamento: current.data_faturamento,

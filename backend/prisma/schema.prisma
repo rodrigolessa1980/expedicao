@@ -45,7 +45,7 @@ model Status {
 
 model Pedido {
   numeroPedido   String   @id @map("numero_pedido") @db.VarChar(60)
-  representante  String   @db.VarChar(120)
+  representante  String?  @db.VarChar(120)
   numeroNf       String   @map("numero_nf") @db.VarChar(60)
   cliente        String   @db.VarChar(160)
   dataFaturamento DateTime @map("data_faturamento") @db.Date
