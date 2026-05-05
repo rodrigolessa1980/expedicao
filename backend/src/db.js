@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import { sha256, slugify } from "./security.js";
 
 const defaultStatus = [
+  { id: "pedido-adicionado", nome: "Pedido Adicionado", cor: "#dc2626" },
   { id: "aguardando-carregamento", nome: "Aguardando carregamento", cor: "#6b7280" },
   { id: "em-transito", nome: "Em transito", cor: "#2563eb" },
   { id: "no-porto", nome: "No porto", cor: "#f97316" },
@@ -55,6 +56,7 @@ function mapPedido(row) {
     representante: row.representante || "",
     numeroNF: row.numero_nf,
     cliente: row.cliente,
+    dataPedido: row.data_pedido || row.data_faturamento,
     dataFaturamento: row.data_faturamento,
     dataExpedicao: row.data_expedicao,
     prazoEntrega: row.prazo_entrega,
@@ -89,6 +91,7 @@ const trackedPedidoFields = [
   { field: "representante", column: "representante", label: "Representante (opcional)" },
   { field: "numeroNF", column: "numero_nf", label: "Numero NF" },
   { field: "cliente", column: "cliente", label: "Cliente" },
+  { field: "dataPedido", column: "data_pedido", label: "Data do pedido" },
   { field: "dataFaturamento", column: "data_faturamento", label: "Data Faturamento" },
   { field: "dataExpedicao", column: "data_expedicao", label: "Data Expedicao" },
   { field: "prazoEntrega", column: "prazo_entrega", label: "Prazo de Entrega" },
@@ -145,6 +148,7 @@ export async function ensureDb() {
       representante VARCHAR(120) NULL,
       numero_nf VARCHAR(60) NOT NULL,
       cliente VARCHAR(160) NOT NULL,
+      data_pedido DATE NOT NULL,
       data_faturamento DATE NOT NULL,
       data_expedicao DATE NOT NULL,
       prazo_entrega DATE NOT NULL,
@@ -158,6 +162,8 @@ export async function ensureDb() {
   await ensureColumn("status", "updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await ensureColumn("pedidos", "updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await ensureColumn("pedidos", "created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+  await ensureColumn("pedidos", "data_pedido DATE NULL");
+  await conn.query("UPDATE pedidos SET data_pedido = data_faturamento WHERE data_pedido IS NULL");
   await conn.query("ALTER TABLE pedidos MODIFY COLUMN representante VARCHAR(120) NULL");
   await conn.query(`
     CREATE TABLE IF NOT EXISTS pedido_change_logs (
@@ -343,13 +349,14 @@ export async function createOrder(payload) {
   const now = new Date();
   await conn.query(
     `INSERT INTO pedidos
-      (numero_pedido, representante, numero_nf, cliente, data_faturamento, data_expedicao, prazo_entrega, data_entrega, status_atual, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (numero_pedido, representante, numero_nf, cliente, data_pedido, data_faturamento, data_expedicao, prazo_entrega, data_entrega, status_atual, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       payload.numeroPedido,
       payload.representante || null,
       payload.numeroNF,
       payload.cliente,
+      payload.dataPedido,
       payload.dataFaturamento,
       payload.dataExpedicao,
       payload.prazoEntrega,
@@ -364,6 +371,7 @@ export async function createOrder(payload) {
     representante: payload.representante || "",
     numeroNF: payload.numeroNF,
     cliente: payload.cliente,
+    dataPedido: payload.dataPedido,
     dataFaturamento: payload.dataFaturamento,
     dataExpedicao: payload.dataExpedicao,
     prazoEntrega: payload.prazoEntrega,
@@ -393,7 +401,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
 
     await trx.query(
       `UPDATE pedidos
-        SET numero_pedido = ?, representante = ?, numero_nf = ?, cliente = ?, data_faturamento = ?, data_expedicao = ?,
+        SET numero_pedido = ?, representante = ?, numero_nf = ?, cliente = ?, data_pedido = ?, data_faturamento = ?, data_expedicao = ?,
             prazo_entrega = ?, data_entrega = ?, status_atual = ?, updated_at = ?
       WHERE numero_pedido = ?`,
       [
@@ -401,6 +409,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
         payload.representante || null,
         payload.numeroNF,
         payload.cliente,
+        payload.dataPedido,
         payload.dataFaturamento,
         payload.dataExpedicao,
         payload.prazoEntrega,
@@ -416,6 +425,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
       representante: payload.representante || "",
       numeroNF: payload.numeroNF,
       cliente: payload.cliente,
+      dataPedido: payload.dataPedido,
       dataFaturamento: payload.dataFaturamento,
       dataExpedicao: payload.dataExpedicao,
       prazoEntrega: payload.prazoEntrega,
@@ -471,6 +481,7 @@ export async function updateOrderStatus(numeroPedido, statusId) {
     representante: current.representante || "",
     numeroNF: current.numero_nf,
     cliente: current.cliente,
+    dataPedido: current.data_pedido || current.data_faturamento,
     dataFaturamento: current.data_faturamento,
     dataExpedicao: current.data_expedicao,
     prazoEntrega: current.prazo_entrega,
@@ -491,6 +502,7 @@ export async function listOrderChangesByRole(user, { since, limit = 500 }) {
         representante,
         numero_nf,
         cliente,
+        data_pedido,
         data_faturamento,
         data_expedicao,
         prazo_entrega,

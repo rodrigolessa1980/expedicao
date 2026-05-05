@@ -9,6 +9,7 @@ export type Pedido = {
   representante: string;
   numeroNF: string;
   cliente: string;
+  dataPedido: string;
   dataFaturamento: string;
   dataExpedicao: string;
   prazoEntrega: string;
@@ -23,6 +24,7 @@ export type PedidoField =
   | "representante"
   | "numeroNF"
   | "cliente"
+  | "dataPedido"
   | "dataFaturamento"
   | "dataExpedicao"
   | "prazoEntrega"

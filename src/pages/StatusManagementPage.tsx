@@ -59,20 +59,8 @@ export function StatusManagementPage() {
             return (
               <div
                 key={item.id}
-                className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[minmax(0,1.5fr)_140px_auto_auto] md:items-end"
+                className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[140px_minmax(0,1.5fr)_auto_auto] md:items-end"
               >
-                <div className="space-y-1">
-                  <Label>Nome</Label>
-                  <Input
-                    value={draft.nome}
-                    onChange={(e) =>
-                      setEdicoes((state) => ({
-                        ...state,
-                        [item.id]: { ...draft, nome: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
                 <div className="space-y-1">
                   <Label>Cor</Label>
                   <Input
@@ -82,6 +70,18 @@ export function StatusManagementPage() {
                       setEdicoes((state) => ({
                         ...state,
                         [item.id]: { ...draft, cor: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Nome</Label>
+                  <Input
+                    value={draft.nome}
+                    onChange={(e) =>
+                      setEdicoes((state) => ({
+                        ...state,
+                        [item.id]: { ...draft, nome: e.target.value },
                       }))
                     }
                   />

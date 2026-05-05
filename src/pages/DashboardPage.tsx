@@ -8,9 +8,10 @@ import { Card } from "../components/ui/card";
 type DashboardPageProps = {
   pedidos: Pedido[];
   canManage: boolean;
+  canCreate: boolean;
 };
 
-export function DashboardPage({ pedidos, canManage }: DashboardPageProps) {
+export function DashboardPage({ pedidos, canManage, canCreate }: DashboardPageProps) {
   const [loading, setLoading] = useState(true);
   const [pedidoSelecionado, setPedidoSelecionado] = useState<Pedido | null>(null);
   const [dialogEdicaoAberto, setDialogEdicaoAberto] = useState(false);
@@ -29,7 +30,7 @@ export function DashboardPage({ pedidos, canManage }: DashboardPageProps) {
           <h2 className="text-lg font-semibold text-slate-900">Painel de pedidos</h2>
           <p className="text-xs text-slate-500">Atualizacao em tempo real de prazos e status</p>
         </div>
-        {canManage ? <PedidoFormDialog /> : null}
+        {canCreate ? <PedidoFormDialog /> : null}
       </div>
 
       <Card className="border-slate-300 p-3 shadow-md ring-2 ring-blue-100 md:p-4">

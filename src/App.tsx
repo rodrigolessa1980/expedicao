@@ -34,6 +34,7 @@ export default function App() {
 
   const isAdmin = usuarioAtual?.tipo === "administrador";
   const canManage = isAdmin;
+  const canCreate = isAdmin || usuarioAtual?.tipo === "representante";
   const canSeeCadastros = isAdmin;
   const pedidosVisiveis =
     usuarioAtual?.tipo === "representante"
@@ -254,7 +255,7 @@ export default function App() {
         </header>
 
         {view === "dashboard" ? (
-          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} />
+          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} canCreate={canCreate} />
         ) : view === "funil" ? (
           <FunilPage pedidos={pedidosFiltrados} />
         ) : view === "usuarios" && canSeeCadastros ? (
@@ -262,7 +263,7 @@ export default function App() {
         ) : canSeeCadastros ? (
           <StatusManagementPage />
         ) : (
-          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} />
+          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} canCreate={canCreate} />
         )}
       </div>
 

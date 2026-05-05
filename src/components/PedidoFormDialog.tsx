@@ -14,6 +14,7 @@ const initialValues = {
   representante: "",
   numeroNF: "",
   cliente: "",
+  dataPedido: "",
   dataFaturamento: "",
   dataExpedicao: "",
   prazoEntrega: "",
@@ -26,6 +27,7 @@ const FIELD_LABELS: Record<PedidoField, string> = {
   representante: "Representante (opcional)",
   numeroNF: "Numero NF",
   cliente: "Cliente",
+  dataPedido: "Data do pedido",
   dataFaturamento: "Data Faturamento",
   dataExpedicao: "Data Expedicao",
   prazoEntrega: "Prazo de Entrega",
@@ -74,6 +76,7 @@ export function PedidoFormDialog({
   const usuarios = useAuthStore((state) => state.usuarios);
   const loadUsuarios = useAuthStore((state) => state.loadUsuarios);
   const usuarioAtual = useAuthStore((state) => state.usuarioAtual);
+  const isRepresentante = usuarioAtual?.tipo === "representante";
   const [openInterno, setOpenInterno] = useState(false);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -124,6 +127,7 @@ export function PedidoFormDialog({
         representante: initialPedido.representante,
         numeroNF: initialPedido.numeroNF,
         cliente: initialPedido.cliente,
+        dataPedido: initialPedido.dataPedido,
         dataFaturamento: initialPedido.dataFaturamento,
         dataExpedicao: initialPedido.dataExpedicao,
         prazoEntrega: initialPedido.prazoEntrega,
@@ -133,9 +137,17 @@ export function PedidoFormDialog({
       setLogsOpen(false);
       return;
     }
+    if (mode === "create" && isRepresentante) {
+      setForm({
+        ...initialValues,
+        representante: usuarioAtual?.nome ?? "",
+      });
+      setLogsOpen(false);
+      return;
+    }
     setForm(initialValues);
     setLogsOpen(false);
-  }, [aberto, initialPedido, mode]);
+  }, [aberto, initialPedido, mode, isRepresentante, usuarioAtual?.nome]);
 
   useEffect(() => {
     if (!aberto || mode !== "edit" || !numeroPedidoOriginal) return;
@@ -195,24 +207,28 @@ export function PedidoFormDialog({
           </div>
           <div className="space-y-1">
             {renderFieldLabel("representante")}
-            <Select
-              value={form.representante || SEM_REPRESENTANTE_VALUE}
-              onValueChange={(value) =>
-                setForm((f) => ({ ...f, representante: value === SEM_REPRESENTANTE_VALUE ? "" : value }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um representante" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={SEM_REPRESENTANTE_VALUE}>Vincular depois</SelectItem>
-                {representantes.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {mode === "create" && isRepresentante ? (
+              <Input value={form.representante || usuarioAtual?.nome || ""} disabled />
+            ) : (
+              <Select
+                value={form.representante || SEM_REPRESENTANTE_VALUE}
+                onValueChange={(value) =>
+                  setForm((f) => ({ ...f, representante: value === SEM_REPRESENTANTE_VALUE ? "" : value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um representante" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SEM_REPRESENTANTE_VALUE}>Vincular depois</SelectItem>
+                  {representantes.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="space-y-1">
             {renderFieldLabel("numeroNF")}
@@ -222,42 +238,56 @@ export function PedidoFormDialog({
             {renderFieldLabel("cliente")}
             <Input value={form.cliente} onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))} />
           </div>
-          <div className="space-y-1">
-            {renderFieldLabel("dataFaturamento")}
-            <Input type="date" value={form.dataFaturamento} onChange={(e) => setForm((f) => ({ ...f, dataFaturamento: e.target.value }))} />
-          </div>
-          <div className="space-y-1">
-            {renderFieldLabel("dataExpedicao")}
-            <Input type="date" value={form.dataExpedicao} onChange={(e) => setForm((f) => ({ ...f, dataExpedicao: e.target.value }))} />
-          </div>
-          <div className="space-y-1">
-            {renderFieldLabel("prazoEntrega")}
-            <Input type="date" value={form.prazoEntrega} onChange={(e) => setForm((f) => ({ ...f, prazoEntrega: e.target.value }))} />
-          </div>
-          <div className="space-y-1">
-            {renderFieldLabel("dataEntrega")}
-            <Input
-              type="date"
-              value={form.dataEntrega}
-              disabled
-              onChange={(e) => setForm((f) => ({ ...f, dataEntrega: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1 md:col-span-2">
-            {renderFieldLabel("statusAtual")}
-            <Select value={form.statusAtual} onValueChange={(value) => setForm((f) => ({ ...f, statusAtual: value }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um status" />
-              </SelectTrigger>
-              <SelectContent>
-                {status.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {mode === "create" && isRepresentante ? (
+            <div className="space-y-1">
+              {renderFieldLabel("dataPedido")}
+              <Input type="date" value={form.dataPedido} onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))} />
+            </div>
+          ) : null}
+          {!(mode === "create" && isRepresentante) ? (
+            <>
+              <div className="space-y-1">
+                {renderFieldLabel("dataPedido")}
+                <Input type="date" value={form.dataPedido} onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                {renderFieldLabel("dataFaturamento")}
+                <Input type="date" value={form.dataFaturamento} onChange={(e) => setForm((f) => ({ ...f, dataFaturamento: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                {renderFieldLabel("dataExpedicao")}
+                <Input type="date" value={form.dataExpedicao} onChange={(e) => setForm((f) => ({ ...f, dataExpedicao: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                {renderFieldLabel("prazoEntrega")}
+                <Input type="date" value={form.prazoEntrega} onChange={(e) => setForm((f) => ({ ...f, prazoEntrega: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                {renderFieldLabel("dataEntrega")}
+                <Input
+                  type="date"
+                  value={form.dataEntrega}
+                  disabled
+                  onChange={(e) => setForm((f) => ({ ...f, dataEntrega: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                {renderFieldLabel("statusAtual")}
+                <Select value={form.statusAtual} onValueChange={(value) => setForm((f) => ({ ...f, statusAtual: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {status.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          ) : null}
         </div>
 
         {erro ? <p className="mt-3 text-sm text-red-600">{erro}</p> : null}

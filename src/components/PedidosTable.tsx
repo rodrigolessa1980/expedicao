@@ -44,7 +44,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
   const dadosComFiltroPeriodo = useMemo(() => {
     if (dataInicio || dataFim) {
       return dados.filter((pedido) => {
-        const data = new Date(`${pedido.dataFaturamento}T00:00:00`).getTime();
+        const data = new Date(`${pedido.dataPedido}T00:00:00`).getTime();
         const inicio = dataInicio ? new Date(`${dataInicio}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
         const fim = dataFim ? new Date(`${dataFim}T23:59:59`).getTime() : Number.POSITIVE_INFINITY;
         return data >= inicio && data <= fim;
@@ -58,7 +58,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
       const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).getTime();
       const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59).getTime();
       return dados.filter((pedido) => {
-        const data = new Date(`${pedido.dataFaturamento}T00:00:00`).getTime();
+        const data = new Date(`${pedido.dataPedido}T00:00:00`).getTime();
         return data >= inicioMes && data <= fimMes;
       });
     }
@@ -67,7 +67,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
     const inicio = new Date(hoje);
     inicio.setDate(inicio.getDate() - dias);
     const inicioTs = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate()).getTime();
-    return dados.filter((pedido) => new Date(`${pedido.dataFaturamento}T00:00:00`).getTime() >= inicioTs);
+    return dados.filter((pedido) => new Date(`${pedido.dataPedido}T00:00:00`).getTime() >= inicioTs);
   }, [dados, periodoRapido, dataInicio, dataFim]);
 
   const filtrados = useMemo(
@@ -84,9 +84,15 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
 
   const columns = useMemo<ColumnDef<Pedido>[]>(
     () => [
+      { accessorKey: "numeroPedido", header: "Pedido" },
       { accessorKey: "representante", header: "Representante" },
       { accessorKey: "numeroNF", header: "NF" },
       { accessorKey: "cliente", header: "Cliente" },
+      {
+        accessorKey: "dataPedido",
+        header: "Data do Pedido",
+        cell: ({ row }) => formatarData(row.original.dataPedido),
+      },
       {
         accessorKey: "dataFaturamento",
         header: "Data Faturamento",
@@ -256,6 +262,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
             <div key={pedido.numeroPedido} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-500">Pedido {pedido.numeroPedido}</p>
                   <p className="truncate text-sm font-semibold text-slate-900">{pedido.cliente}</p>
                   <p className="text-xs text-slate-500">{pedido.representante}</p>
                 </div>
@@ -265,6 +272,9 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <p>
+                  <span className="font-medium text-slate-700">Pedido:</span> {formatarData(pedido.dataPedido)}
+                </p>
                 <p>
                   <span className="font-medium text-slate-700">Faturamento:</span> {formatarData(pedido.dataFaturamento)}
                 </p>

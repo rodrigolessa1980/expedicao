@@ -47,6 +47,7 @@ function normalizeDate(value: unknown) {
 function normalizePedido(pedido: Pedido): Pedido {
   return {
     ...pedido,
+    dataPedido: normalizeDate(pedido.dataPedido),
     dataFaturamento: normalizeDate(pedido.dataFaturamento),
     dataExpedicao: normalizeDate(pedido.dataExpedicao),
     prazoEntrega: normalizeDate(pedido.prazoEntrega),

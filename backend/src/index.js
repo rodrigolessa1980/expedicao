@@ -293,23 +293,37 @@ app.get("/api/orders/changes", requireAuth, async (req, res) => {
   });
 });
 
-app.post("/api/orders", requireAuth, requireAdmin, async (req, res) => {
+app.post("/api/orders", requireAuth, async (req, res) => {
   const payload = req.body ?? {};
-  const required = [
-    "numeroPedido",
-    "numeroNF",
-    "cliente",
-    "dataFaturamento",
-    "dataExpedicao",
-    "prazoEntrega",
-    "statusAtual"
-  ];
+  const isRepresentante = req.user?.tipo === "representante";
+  const isAdmin = req.user?.tipo === "administrador";
+  if (!isRepresentante && !isAdmin) {
+    return res.status(403).json({ message: "Sem permissao para criar pedidos." });
+  }
+  const required = isRepresentante
+    ? ["numeroPedido", "numeroNF", "cliente", "dataPedido"]
+    : ["numeroPedido", "numeroNF", "cliente", "dataPedido", "dataFaturamento", "dataExpedicao", "prazoEntrega", "statusAtual"];
 
-  const missing = required.find((key) => !payload[key]);
+  const missing = required.find((key) => !String(payload[key] ?? "").trim());
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
 
+  const hoje = new Date().toISOString().slice(0, 10);
+  const payloadNormalizado = isRepresentante
+    ? {
+        numeroPedido: String(payload.numeroPedido).trim(),
+        numeroNF: String(payload.numeroNF).trim(),
+        cliente: String(payload.cliente).trim(),
+        representante: req.user?.nome || "",
+        dataPedido: String(payload.dataPedido ?? "").trim() || hoje,
+        dataFaturamento: hoje,
+        dataExpedicao: hoje,
+        prazoEntrega: hoje,
+        statusAtual: "pedido-adicionado"
+      }
+    : payload;
+
   try {
-    const novoPedido = await createOrder(payload);
+    const novoPedido = await createOrder(payloadNormalizado);
     return res.status(201).json(novoPedido);
   } catch (error) {
     if (String(error?.code) === "ER_DUP_ENTRY") {
@@ -328,6 +342,7 @@ app.put("/api/orders/:numeroPedido", requireAuth, requireAdmin, async (req, res)
     "numeroPedido",
     "numeroNF",
     "cliente",
+    "dataPedido",
     "dataFaturamento",
     "dataExpedicao",
     "prazoEntrega",
