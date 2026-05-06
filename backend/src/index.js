@@ -315,8 +315,8 @@ app.post("/api/orders", requireAuth, async (req, res) => {
     return res.status(403).json({ message: "Sem permissao para criar pedidos." });
   }
   const required = isRepresentante
-    ? ["numeroPedido", "numeroNF", "cliente", "dataPedido"]
-    : ["numeroPedido", "numeroNF", "cliente", "prazoEntrega", "statusAtual"];
+    ? ["numeroPedido", "cliente", "dataPedido"]
+    : ["numeroPedido", "cliente", "prazoEntrega", "statusAtual"];
 
   const missing = required.find((key) => !String(payload[key] ?? "").trim());
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
@@ -325,7 +325,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
   const payloadNormalizado = isRepresentante
     ? {
         numeroPedido: String(payload.numeroPedido).trim(),
-        numeroNF: String(payload.numeroNF).trim(),
+        numeroNF: String(payload.numeroNF ?? "").trim(),
         cliente: String(payload.cliente).trim(),
         representante: req.user?.nome || "",
         dataPedido: String(payload.dataPedido ?? "").trim() || hoje,
@@ -336,6 +336,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
       }
     : {
         ...payload,
+        numeroNF: String(payload.numeroNF ?? "").trim(),
         dataPedido: String(payload.dataPedido ?? "").trim() || String(payload.dataFaturamento ?? "").trim() || hoje,
         dataFaturamento:
           String(payload.dataFaturamento ?? "").trim() ||

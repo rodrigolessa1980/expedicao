@@ -182,6 +182,10 @@ export function PedidoFormDialog({
       return;
     }
     if (isRepresentante && mode === "create") {
+      if (!form.numeroPedido.trim()) {
+        setErro("O campo Numero do Pedido e obrigatorio.");
+        return;
+      }
       if (!form.cliente.trim()) {
         setErro("O campo Cliente e obrigatorio.");
         return;
@@ -192,6 +196,24 @@ export function PedidoFormDialog({
       }
       if (arquivos.length === 0) {
         setErro("Adicione pelo menos um anexo para abrir o pedido.");
+        return;
+      }
+    }
+    if (!isRepresentante && mode === "create") {
+      if (!form.numeroPedido.trim()) {
+        setErro("O campo Numero do Pedido e obrigatorio.");
+        return;
+      }
+      if (!form.cliente.trim()) {
+        setErro("O campo Cliente e obrigatorio.");
+        return;
+      }
+      if (!form.prazoEntrega) {
+        setErro("O campo Prazo de Entrega e obrigatorio.");
+        return;
+      }
+      if (!form.statusAtual) {
+        setErro("O campo Status inicial e obrigatorio.");
         return;
       }
     }
@@ -241,7 +263,7 @@ export function PedidoFormDialog({
           <div className="space-y-1">
             {isRepresentante && mode === "create" ? (
               <Label>
-                Numero do Pedido <span className="font-normal text-slate-400">(opcional)</span>
+                Numero do Pedido <span className="text-red-500">*</span>
               </Label>
             ) : (
               renderFieldLabel("numeroPedido")
