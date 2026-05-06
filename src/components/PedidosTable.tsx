@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -10,6 +10,7 @@ import {
 import { motion } from "framer-motion";
 import type { Pedido } from "../types";
 import { diasParaPrazo, faixaPrazoPorEtapa, formatarData, isAtrasado, isPrazoProximo } from "../utils/date";
+import { calcularCronogramaPedido } from "../utils/cronogramaPedido";
 import { useExportStore } from "../store/useExportStore";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -356,6 +357,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
               const atrasado = isAtrasado(row.original.prazoEntrega);
               const proximo = isPrazoProximo(row.original.prazoEntrega);
               const faixaPrazo = faixaPrazoPorEtapa(row.original.dataFaturamento, row.original.prazoEntrega);
+              const termometro = calcularCronogramaPedido(row.original);
               const corSublinhado =
                 faixaPrazo === "verde"
                   ? "border-b-2 border-emerald-500"
@@ -363,30 +365,103 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                     ? "border-b-2 border-amber-500"
                     : "border-b-2 border-red-500";
               return (
-                <motion.tr
-                  key={row.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  onClick={() => {
-                    if (canManage && onPedidoClick) onPedidoClick(row.original);
-                  }}
-                  className={
-                    `${corSublinhado} ${
-                      atrasado
-                        ? "bg-red-50/70"
-                        : proximo
-                          ? "bg-amber-50/60"
-                          : "border-t border-slate-100"
-                    } ${canManage && onPedidoClick ? "cursor-pointer hover:bg-blue-50/50" : ""}`
-                  }
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="max-w-0 px-3 py-3 align-top break-words text-slate-700">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                <Fragment key={row.id}>
+                  <tr className="border-t border-slate-100">
+                    <td colSpan={row.getVisibleCells().length} className="px-3 pb-0 pt-2">
+                      {termometro.valido ? (
+                        <div className="space-y-1">
+                          <div className="relative h-2.5 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                            <div className="flex h-full w-full">
+                              {termometro.segmentos.map((segmento) => (
+                                <div
+                                  key={segmento.id}
+                                  className="h-full"
+                                  style={{ width: `${segmento.percentual.toFixed(2)}%`, backgroundColor: segmento.cor }}
+                                  title={`${segmento.nome}: ${segmento.dias} dia(s)`}
+                                />
+                              ))}
+                              {termometro.naoUtilizadoPercentual > 0 ? (
+                                <div
+                                  className="h-full bg-slate-200"
+                                  style={{ width: `${termometro.naoUtilizadoPercentual.toFixed(2)}%` }}
+                                  title="Periodo nao utilizado ate o prazo"
+                                />
+                              ) : null}
+                            </div>
+                            {termometro.atrasado ? (
+                              <div
+                                className="absolute right-0 top-0 h-full bg-red-600/90"
+                                style={{ width: `${termometro.atrasoPercentual.toFixed(2)}%` }}
+                                title={`Atraso: ${termometro.atrasoDias} dia(s)`}
+                              />
+                            ) : null}
+                            <div
+                              className="absolute bottom-0 top-0 w-0.5 bg-slate-900"
+                              style={{
+                                left:
+                                  termometro.prazoPercentual >= 100
+                                    ? "calc(100% - 1px)"
+                                    : `${termometro.prazoPercentual.toFixed(2)}%`,
+                              }}
+                              title="Marco do prazo de entrega"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2 pb-0.5 text-[10px] text-slate-500">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="h-2 w-2 rounded-full bg-amber-500" />
+                              Data Faturamento
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="h-2 w-2 rounded-full bg-blue-600" />
+                              Data Expedicao
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                              Data da Entrega
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="h-2 w-2 rounded-full bg-slate-300" />
+                              Nao utilizado
+                            </span>
+                            {termometro.atrasado ? (
+                              <span className="inline-flex items-center gap-1 font-semibold text-red-600">
+                                <span className="h-2 w-2 rounded-full bg-red-600" />
+                                Atraso
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] text-slate-500">
+                          Cronograma indisponivel: preencha Data do Pedido e Prazo de entrega.
+                        </div>
+                      )}
                     </td>
-                  ))}
-                </motion.tr>
+                  </tr>
+                  <motion.tr
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={() => {
+                      if (canManage && onPedidoClick) onPedidoClick(row.original);
+                    }}
+                    className={
+                      `${corSublinhado} ${
+                        atrasado
+                          ? "bg-red-50/70"
+                          : proximo
+                            ? "bg-amber-50/60"
+                            : "border-t border-slate-100"
+                      } ${canManage && onPedidoClick ? "cursor-pointer hover:bg-blue-50/50" : ""}`
+                    }
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="max-w-0 px-3 py-3 align-top break-words text-slate-700">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </motion.tr>
+                </Fragment>
               );
             })}
           </tbody>

@@ -9,7 +9,8 @@ import { Button } from "./components/ui/button";
 import { Dialog, DialogContent } from "./components/ui/dialog";
 import { useExportStore } from "./store/useExportStore";
 import { useAuthStore } from "./store/useAuthStore";
-import { formatarData, isAtrasado, labelPrazo } from "./utils/date";
+import { formatarData, labelPrazo } from "./utils/date";
+import { calcularCronogramaPedido } from "./utils/cronogramaPedido";
 
 type View = "dashboard" | "funil" | "status" | "usuarios";
 
@@ -56,14 +57,14 @@ export default function App() {
 
   const kpis = useMemo(() => {
     const total = pedidosFiltrados.length;
-    const atrasados = pedidosFiltrados.filter((pedido) => isAtrasado(pedido.prazoEntrega)).length;
+    const atrasados = pedidosFiltrados.filter((pedido) => calcularCronogramaPedido(pedido).atrasado).length;
     const noPrazo = total - atrasados;
     const emTransito = pedidosFiltrados.filter((pedido) => pedido.statusAtual === "em-transito").length;
     return { total, atrasados, noPrazo, emTransito };
   }, [pedidosFiltrados]);
 
   const pedidosAtrasados = useMemo(
-    () => pedidosFiltrados.filter((pedido) => isAtrasado(pedido.prazoEntrega)),
+    () => pedidosFiltrados.filter((pedido) => calcularCronogramaPedido(pedido).atrasado),
     [pedidosFiltrados],
   );
 
@@ -129,6 +130,71 @@ export default function App() {
       : "conic-gradient(#e5e7eb 0% 100%)";
 
     return { total, segmentos, conic };
+  }, [pedidosFiltrados]);
+
+  const mediaEtapasTempo = useMemo(() => {
+    const etapas = [
+      { id: "pedido-faturamento", nome: "Pedido -> Faturamento", cor: "#eab308" },
+      { id: "faturamento-expedicao", nome: "Faturamento -> Expedicao", cor: "#2563eb" },
+      { id: "expedicao-entrega", nome: "Expedicao -> Entrega", cor: "#16a34a" },
+    ];
+
+    let baseValidos = 0;
+    let soma1 = 0;
+    let soma2 = 0;
+    let soma3 = 0;
+
+    pedidosFiltrados.forEach((pedido) => {
+      const cronograma = calcularCronogramaPedido(pedido);
+      if (!cronograma.valido) return;
+
+      baseValidos += 1;
+      soma1 += cronograma.segmentos.find((segmento) => segmento.id === "faturamento")?.dias ?? 0;
+      soma2 += cronograma.segmentos.find((segmento) => segmento.id === "expedicao")?.dias ?? 0;
+      soma3 += cronograma.segmentos.find((segmento) => segmento.id === "entrega")?.dias ?? 0;
+    });
+
+    const somaTotalDias = soma1 + soma2 + soma3;
+    const itens = [
+      { ...etapas[0], somaDias: soma1 },
+      { ...etapas[1], somaDias: soma2 },
+      { ...etapas[2], somaDias: soma3 },
+    ].map((item) => ({
+      ...item,
+      mediaDias: baseValidos > 0 ? item.somaDias / baseValidos : 0,
+      percentual: somaTotalDias > 0 ? (item.somaDias / somaTotalDias) * 100 : 0,
+    }));
+
+    let acumulado = 0;
+    const segmentos = itens.map((item) => {
+      const inicio = acumulado;
+      acumulado += item.percentual;
+      const fim = acumulado;
+      return { ...item, inicio, fim };
+    });
+
+    const conic = segmentos.length
+      ? `conic-gradient(${segmentos
+          .map((seg) => `${seg.cor} ${seg.inicio.toFixed(2)}% ${seg.fim.toFixed(2)}%`)
+          .join(", ")})`
+      : "conic-gradient(#e5e7eb 0% 100%)";
+
+    return { base: baseValidos, segmentos, conic };
+  }, [pedidosFiltrados]);
+
+  const entregaNoPrazo = useMemo(() => {
+    const base = pedidosFiltrados
+      .map((pedido) => calcularCronogramaPedido(pedido))
+      .filter((cronograma) => cronograma.valido);
+    const total = base.length;
+    const atrasados = base.filter((cronograma) => cronograma.atrasado).length;
+    const noPrazo = total - atrasados;
+    const atrasoPercentual = total > 0 ? (atrasados / total) * 100 : 0;
+    const emDiaPercentual = 100 - atrasoPercentual;
+    const conic = `conic-gradient(#dc2626 0% ${atrasoPercentual.toFixed(2)}%, #16a34a ${atrasoPercentual.toFixed(
+      2,
+    )}% ${(atrasoPercentual + emDiaPercentual).toFixed(2)}%)`;
+    return { total, atrasados, noPrazo, atrasoPercentual, emDiaPercentual, conic };
   }, [pedidosFiltrados]);
 
   if (!usuarioAtual) return <LoginPage />;
@@ -208,7 +274,7 @@ export default function App() {
 
       <div className="mx-auto w-full max-w-[1800px] min-w-0 space-y-4 px-3 pb-20 pt-3 sm:px-4 md:space-y-5 md:px-6 md:pb-6 md:pt-4 xl:px-8">
         <header className="rounded-2xl bg-white p-4 shadow-sm md:p-5">
-          <div className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_minmax(260px,320px)_minmax(260px,320px)] xl:items-center">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-center">
             <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
               <p className="mb-1 text-[11px] font-medium text-slate-500">Notas por estado</p>
               <div className="flex min-w-0 items-center gap-3">
@@ -259,6 +325,60 @@ export default function App() {
                   {notasPorRepresentante.segmentos.length === 0 ? (
                     <p className="text-[11px] text-slate-500">Sem notas no periodo.</p>
                   ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+              <p className="mb-1 text-[11px] font-medium text-slate-500">Media de etapas</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="relative h-20 w-20 shrink-0 rounded-full" style={{ background: mediaEtapasTempo.conic }}>
+                  <div className="absolute inset-3 rounded-full bg-white" />
+                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-700">
+                    {mediaEtapasTempo.base}
+                  </div>
+                </div>
+                <div className="min-w-0 space-y-1">
+                  {mediaEtapasTempo.segmentos.map((item) => (
+                    <div key={item.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.cor }} />
+                      <span className="max-w-[130px] truncate">{item.nome}</span>
+                      <span className="font-medium text-slate-700">{item.mediaDias.toFixed(1)}d</span>
+                    </div>
+                  ))}
+                  {mediaEtapasTempo.base === 0 ? <p className="text-[11px] text-slate-500">Sem dados completos.</p> : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+              <p className="mb-1 text-[11px] font-medium text-slate-500">Entrega no prazo</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <div
+                  className="relative h-20 w-20 shrink-0 rounded-full"
+                  style={{ background: entregaNoPrazo.conic }}
+                >
+                  <div className="absolute inset-3 rounded-full bg-white" />
+                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-700">
+                    {entregaNoPrazo.total}
+                  </div>
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                    <span className="h-2.5 w-2.5 rounded-full bg-red-600" />
+                    <span className="max-w-[130px] truncate">Atrasados</span>
+                    <span className="font-medium text-slate-700">
+                      {entregaNoPrazo.atrasados} ({entregaNoPrazo.atrasoPercentual.toFixed(1)}%)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                    <span className="max-w-[130px] truncate">No prazo</span>
+                    <span className="font-medium text-slate-700">
+                      {entregaNoPrazo.noPrazo} ({entregaNoPrazo.emDiaPercentual.toFixed(1)}%)
+                    </span>
+                  </div>
+                  {entregaNoPrazo.total === 0 ? <p className="text-[11px] text-slate-500">Sem entregas fechadas.</p> : null}
                 </div>
               </div>
             </div>
