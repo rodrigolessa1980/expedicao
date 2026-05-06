@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { PlusCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Paperclip, PlusCircle, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -87,6 +87,7 @@ export function PedidoFormDialog({
   const [form, setForm] = useState(initialValues);
   const [logsOpen, setLogsOpen] = useState(false);
   const [arquivos, setArquivos] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const aberto = openProp ?? openInterno;
   const setAberto = onOpenChange ?? setOpenInterno;
@@ -180,6 +181,20 @@ export function PedidoFormDialog({
       setErro("Pedido invalido para edicao.");
       return;
     }
+    if (isRepresentante && mode === "create") {
+      if (!form.cliente.trim()) {
+        setErro("O campo Cliente e obrigatorio.");
+        return;
+      }
+      if (!form.dataPedido) {
+        setErro("O campo Data do pedido e obrigatorio.");
+        return;
+      }
+      if (arquivos.length === 0) {
+        setErro("Adicione pelo menos um anexo para abrir o pedido.");
+        return;
+      }
+    }
     setSalvando(true);
     const result = mode === "edit" ? await updatePedido(numeroPedidoOriginal, form) : await addPedido(form);
     if (result.ok && mode === "create" && arquivos.length > 0) {
@@ -224,7 +239,13 @@ export function PedidoFormDialog({
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            {renderFieldLabel("numeroPedido")}
+            {isRepresentante && mode === "create" ? (
+              <Label>
+                Numero do Pedido <span className="font-normal text-slate-400">(opcional)</span>
+              </Label>
+            ) : (
+              renderFieldLabel("numeroPedido")
+            )}
             <Input value={form.numeroPedido} onChange={(e) => setForm((f) => ({ ...f, numeroPedido: e.target.value }))} />
           </div>
           <div className="space-y-1">
@@ -253,28 +274,82 @@ export function PedidoFormDialog({
             )}
           </div>
           <div className="space-y-1">
-            {renderFieldLabel("numeroNF")}
+            {isRepresentante && mode === "create" ? (
+              <Label>
+                Numero NF <span className="font-normal text-slate-400">(opcional)</span>
+              </Label>
+            ) : (
+              renderFieldLabel("numeroNF")
+            )}
             <Input value={form.numeroNF} onChange={(e) => setForm((f) => ({ ...f, numeroNF: e.target.value }))} />
           </div>
           <div className="space-y-1">
-            {renderFieldLabel("cliente")}
+            {isRepresentante && mode === "create" ? (
+              <Label>
+                Cliente <span className="text-red-500">*</span>
+              </Label>
+            ) : (
+              renderFieldLabel("cliente")
+            )}
             <Input value={form.cliente} onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))} />
           </div>
           {mode === "create" && isRepresentante ? (
             <div className="space-y-1">
-              {renderFieldLabel("dataPedido")}
+              <Label>
+                Data do pedido <span className="text-red-500">*</span>
+              </Label>
               <Input type="date" value={form.dataPedido} onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))} />
             </div>
           ) : null}
           {mode === "create" && isRepresentante ? (
-            <div className="space-y-1 md:col-span-2">
-              <Label>Anexos do pedido</Label>
-              <Input
+            <div className="space-y-2 md:col-span-2">
+              <Label>
+                Anexos do pedido <span className="text-red-500">*</span>
+              </Label>
+              <input
+                ref={fileInputRef}
                 type="file"
                 multiple
-                onChange={(e) => setArquivos(Array.from(e.target.files ?? []))}
+                className="hidden"
+                onChange={(e) => {
+                  const novos = Array.from(e.target.files ?? []);
+                  setArquivos((prev) => {
+                    const nomes = new Set(prev.map((f) => f.name));
+                    return [...prev, ...novos.filter((f) => !nomes.has(f.name))];
+                  });
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
               />
-              <p className="text-xs text-slate-500">{arquivos.length} arquivo(s) selecionado(s)</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2 border-dashed border-slate-400 hover:border-slate-600"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="h-4 w-4" />
+                Selecionar arquivos
+              </Button>
+              {arquivos.length > 0 ? (
+                <div className="space-y-1">
+                  {arquivos.map((arquivo, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                    >
+                      <span className="truncate text-slate-700">{arquivo.name}</span>
+                      <button
+                        type="button"
+                        className="ml-2 shrink-0 text-slate-400 hover:text-red-500"
+                        onClick={() => setArquivos((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">Nenhum arquivo selecionado. Pelo menos um anexo e obrigatorio.</p>
+              )}
             </div>
           ) : null}
           {!(mode === "create" && isRepresentante) ? (
