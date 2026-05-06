@@ -2,6 +2,11 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
+import multer from "multer";
+import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ensureDb,
   findUserByLoginOrEmail,
@@ -20,7 +25,9 @@ import {
   updateOrder,
   updateOrderStatus,
   listOrderChangesByRole,
-  listOrderLogsByRole
+  listOrderLogsByRole,
+  listOrderAttachmentsByRole,
+  createOrderAttachment
 } from "./db.js";
 import { sha256 } from "./security.js";
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
@@ -28,6 +35,13 @@ import { sendEmail } from "./emailService.js";
 import { confirmationEmailTemplate, forgotPasswordEmailTemplate } from "./emailTemplates.js";
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsBaseDir = path.resolve(__dirname, "../uploads/orders");
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 10 }
+});
 const port = Number(process.env.PORT || 3001);
 const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "12h";
 const corsOrigins = (process.env.CORS_ORIGIN || "")
@@ -379,6 +393,83 @@ app.patch("/api/orders/:numeroPedido/status", requireAuth, requireAdmin, async (
   const pedido = await updateOrderStatus(req.params.numeroPedido, statusId);
   if (!pedido) return res.status(404).json({ message: "Pedido nao encontrado." });
   return res.json(pedido);
+});
+
+app.get("/api/orders/:numeroPedido/attachments", requireAuth, async (req, res) => {
+  const anexos = await listOrderAttachmentsByRole(req.user, req.params.numeroPedido);
+  if (anexos === null) return res.status(404).json({ message: "Pedido nao encontrado." });
+  return res.json(
+    anexos.map((item) => ({
+      id: item.id,
+      pedidoNumero: item.pedidoNumero,
+      nomeOriginal: item.nomeOriginal,
+      mimeType: item.mimeType,
+      tamanhoBytes: item.tamanhoBytes,
+      criadoPor: item.criadoPor,
+      criadoEm: item.criadoEm
+    }))
+  );
+});
+
+app.post("/api/orders/:numeroPedido/attachments", requireAuth, upload.array("files", 10), async (req, res) => {
+  const numeroPedido = req.params.numeroPedido;
+  const anexos = await listOrderAttachmentsByRole(req.user, numeroPedido);
+  if (anexos === null) return res.status(404).json({ message: "Pedido nao encontrado." });
+  const files = Array.isArray(req.files) ? req.files : [];
+  if (files.length === 0) {
+    return res.status(400).json({ message: "Nenhum arquivo enviado." });
+  }
+
+  await fs.mkdir(uploadsBaseDir, { recursive: true });
+  const novos = [];
+  for (const file of files) {
+    const ext = path.extname(file.originalname || "");
+    const storageName = `${Date.now()}-${randomUUID()}${ext}`;
+    const absolutePath = path.join(uploadsBaseDir, storageName);
+    await fs.writeFile(absolutePath, file.buffer);
+    const salvo = await createOrderAttachment({
+      pedidoNumero: numeroPedido,
+      nomeOriginal: file.originalname || storageName,
+      nomeStorage: storageName,
+      caminhoStorage: absolutePath,
+      mimeType: file.mimetype || "application/octet-stream",
+      tamanhoBytes: file.size || 0,
+      criadoPor: req.user?.nome || "Sistema"
+    });
+    novos.push(salvo);
+  }
+  return res.status(201).json(
+    novos.map((item) => ({
+      id: item.id,
+      pedidoNumero: item.pedidoNumero,
+      nomeOriginal: item.nomeOriginal,
+      mimeType: item.mimeType,
+      tamanhoBytes: item.tamanhoBytes,
+      criadoPor: item.criadoPor,
+      criadoEm: item.criadoEm
+    }))
+  );
+});
+
+app.get("/api/orders/:numeroPedido/attachments/:attachmentId", requireAuth, async (req, res) => {
+  const numeroPedido = req.params.numeroPedido;
+  const attachmentId = req.params.attachmentId;
+  const anexos = await listOrderAttachmentsByRole(req.user, numeroPedido);
+  if (anexos === null) return res.status(404).json({ message: "Pedido nao encontrado." });
+  const anexo = anexos.find((item) => item.id === attachmentId);
+  if (!anexo) return res.status(404).json({ message: "Anexo nao encontrado." });
+  const inline = String(req.query.inline || "") === "1";
+  try {
+    await fs.access(anexo.caminhoStorage);
+  } catch {
+    return res.status(404).json({ message: "Arquivo nao encontrado no servidor." });
+  }
+  res.setHeader("Content-Type", anexo.mimeType || "application/octet-stream");
+  res.setHeader(
+    "Content-Disposition",
+    `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(anexo.nomeOriginal)}`
+  );
+  return res.sendFile(anexo.caminhoStorage);
 });
 
 await ensureDb();

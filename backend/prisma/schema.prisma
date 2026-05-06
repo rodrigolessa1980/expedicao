@@ -59,6 +59,7 @@ model Pedido {
   updatedAt       DateTime  @map("updated_at") @db.DateTime(3)
   status          Status    @relation(fields: [statusAtual], references: [id], onDelete: Restrict, onUpdate: Restrict)
   logs            PedidoChangeLog[]
+  attachments     PedidoAttachment[]
 
   @@map("pedidos")
 }
@@ -76,6 +77,22 @@ model PedidoChangeLog {
 
   @@index([pedidoNumero, changedAt], map: "idx_pedido_change_logs_pedido_changed_at")
   @@map("pedido_change_logs")
+}
+
+model PedidoAttachment {
+  id           String   @id @db.VarChar(64)
+  pedidoNumero String   @map("pedido_numero") @db.VarChar(60)
+  nomeOriginal String   @map("nome_original") @db.VarChar(255)
+  nomeStorage  String   @map("nome_storage") @db.VarChar(255)
+  caminhoStorage String @map("caminho_storage") @db.VarChar(500)
+  mimeType     String   @map("mime_type") @db.VarChar(120)
+  tamanhoBytes BigInt   @map("tamanho_bytes")
+  criadoPor    String   @map("criado_por") @db.VarChar(120)
+  criadoEm     DateTime @map("criado_em") @db.DateTime(3)
+  pedido       Pedido   @relation(fields: [pedidoNumero], references: [numeroPedido], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([pedidoNumero, criadoEm], map: "idx_pedido_attachments_pedido_criado_em")
+  @@map("pedido_attachments")
 }
 
 enum UserTipo {

@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { Pedido, PedidoChangeLog, Status } from "../types";
-import { apiRequest } from "../services/api";
+import type { Pedido, PedidoAttachment, PedidoChangeLog, Status } from "../types";
+import { apiRequest, handleAuthFailure } from "../services/api";
 import { useAuthStore } from "./useAuthStore";
 
 type PedidoInput = Omit<Pedido, "numeroPedido"> & { numeroPedido: string };
@@ -8,6 +8,7 @@ type StatusInput = Omit<Status, "id"> & { id?: string };
 type ActionResult = { ok: boolean; erro?: string };
 
 type PedidoLogsMap = Record<string, PedidoChangeLog[]>;
+type PedidoAttachmentsMap = Record<string, PedidoAttachment[]>;
 
 function normalizeLog(raw: PedidoChangeLog): PedidoChangeLog {
   return {
@@ -20,6 +21,7 @@ type ExportState = {
   pedidos: Pedido[];
   status: Status[];
   pedidoLogs: PedidoLogsMap;
+  pedidoAttachments: PedidoAttachmentsMap;
   loading: boolean;
   loadPedidos: () => Promise<void>;
   loadStatus: () => Promise<void>;
@@ -28,6 +30,9 @@ type ExportState = {
   addPedido: (pedido: PedidoInput) => Promise<ActionResult>;
   updatePedido: (numeroPedidoOriginal: string, pedido: PedidoInput) => Promise<ActionResult>;
   loadPedidoLogs: (numeroPedido: string) => Promise<void>;
+  loadPedidoAttachments: (numeroPedido: string) => Promise<void>;
+  uploadPedidoAttachments: (numeroPedido: string, files: File[]) => Promise<ActionResult>;
+  downloadPedidoAttachment: (numeroPedido: string, attachmentId: string, fileName: string, inline?: boolean) => Promise<ActionResult>;
   updatePedidoStatus: (numeroPedido: string, statusId: string) => Promise<ActionResult>;
   addStatus: (payload: StatusInput) => Promise<ActionResult>;
   updateStatus: (id: string, payload: Omit<StatusInput, "id">) => Promise<ActionResult>;
@@ -61,9 +66,10 @@ export const useExportStore = create<ExportState>()((set, get) => ({
   pedidos: [],
   status: [],
   pedidoLogs: {},
+  pedidoAttachments: {},
   loading: false,
 
-  clearData: () => set({ pedidos: [], status: [], loading: false }),
+  clearData: () => set({ pedidos: [], status: [], pedidoLogs: {}, pedidoAttachments: {}, loading: false }),
 
   loadPedidos: async () => {
     const token = getToken();
@@ -151,6 +157,76 @@ export const useExportStore = create<ExportState>()((set, get) => ({
         [numeroPedido]: logs.map(normalizeLog),
       },
     }));
+  },
+
+  loadPedidoAttachments: async (numeroPedido) => {
+    const token = getToken();
+    if (!token || !numeroPedido) return;
+    const anexos = await apiRequest<PedidoAttachment[]>(`/api/orders/${numeroPedido}/attachments`, { token });
+    set((state) => ({
+      pedidoAttachments: {
+        ...state.pedidoAttachments,
+        [numeroPedido]: anexos,
+      },
+    }));
+  },
+
+  uploadPedidoAttachments: async (numeroPedido, files) => {
+    const token = getToken();
+    if (!token) return { ok: false, erro: "Sessao expirada." };
+    if (!numeroPedido || files.length === 0) return { ok: true };
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/orders/${encodeURIComponent(numeroPedido)}/attachments`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        handleAuthFailure(response.status);
+        return { ok: false, erro: data?.message || "Erro ao enviar anexos." };
+      }
+      await get().loadPedidoAttachments(numeroPedido);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, erro: error instanceof Error ? error.message : "Erro ao enviar anexos." };
+    }
+  },
+
+  downloadPedidoAttachment: async (numeroPedido, attachmentId, fileName, inline = false) => {
+    const token = getToken();
+    if (!token) return { ok: false, erro: "Sessao expirada." };
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/orders/${encodeURIComponent(numeroPedido)}/attachments/${encodeURIComponent(attachmentId)}${inline ? "?inline=1" : ""}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (!response.ok) {
+        handleAuthFailure(response.status);
+        const data = await response.json().catch(() => ({}));
+        return { ok: false, erro: data?.message || "Erro ao baixar anexo." };
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      if (inline) {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = fileName || "anexo";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, erro: error instanceof Error ? error.message : "Erro ao baixar anexo." };
+    }
   },
 
   updatePedidoStatus: async (numeroPedido, statusId) => {

@@ -73,6 +73,10 @@ export function PedidoFormDialog({
   const updatePedido = useExportStore((state) => state.updatePedido);
   const pedidoLogs = useExportStore((state) => state.pedidoLogs);
   const loadPedidoLogs = useExportStore((state) => state.loadPedidoLogs);
+  const pedidoAttachments = useExportStore((state) => state.pedidoAttachments);
+  const loadPedidoAttachments = useExportStore((state) => state.loadPedidoAttachments);
+  const uploadPedidoAttachments = useExportStore((state) => state.uploadPedidoAttachments);
+  const downloadPedidoAttachment = useExportStore((state) => state.downloadPedidoAttachment);
   const usuarios = useAuthStore((state) => state.usuarios);
   const loadUsuarios = useAuthStore((state) => state.loadUsuarios);
   const usuarioAtual = useAuthStore((state) => state.usuarioAtual);
@@ -82,6 +86,7 @@ export function PedidoFormDialog({
   const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState(initialValues);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [arquivos, setArquivos] = useState<File[]>([]);
 
   const aberto = openProp ?? openInterno;
   const setAberto = onOpenChange ?? setOpenInterno;
@@ -90,6 +95,10 @@ export function PedidoFormDialog({
   const textoBotaoSalvar = mode === "edit" ? "Salvar alteracoes" : "Salvar pedido";
   const pedidoNumeroAtual = mode === "edit" ? form.numeroPedido || numeroPedidoOriginal : "";
   const logsDoPedido = useMemo(() => pedidoLogs[pedidoNumeroAtual] ?? [], [pedidoLogs, pedidoNumeroAtual]);
+  const anexosDoPedido = useMemo(
+    () => (mode === "edit" ? pedidoAttachments[numeroPedidoOriginal] ?? [] : []),
+    [mode, pedidoAttachments, numeroPedidoOriginal],
+  );
   const logsOrdenados = useMemo(
     () => [...logsDoPedido].sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime()),
     [logsDoPedido],
@@ -135,6 +144,7 @@ export function PedidoFormDialog({
         statusAtual: initialPedido.statusAtual,
       });
       setLogsOpen(false);
+      setArquivos([]);
       return;
     }
     if (mode === "create" && isRepresentante) {
@@ -143,16 +153,19 @@ export function PedidoFormDialog({
         representante: usuarioAtual?.nome ?? "",
       });
       setLogsOpen(false);
+      setArquivos([]);
       return;
     }
     setForm(initialValues);
     setLogsOpen(false);
+    setArquivos([]);
   }, [aberto, initialPedido, mode, isRepresentante, usuarioAtual?.nome]);
 
   useEffect(() => {
     if (!aberto || mode !== "edit" || !numeroPedidoOriginal) return;
     loadPedidoLogs(numeroPedidoOriginal).catch(() => undefined);
-  }, [aberto, mode, numeroPedidoOriginal, loadPedidoLogs]);
+    loadPedidoAttachments(numeroPedidoOriginal).catch(() => undefined);
+  }, [aberto, mode, numeroPedidoOriginal, loadPedidoLogs, loadPedidoAttachments]);
 
   const representantes = useMemo(() => {
     const ativos = usuarios.filter((u) => u.tipo === "representante" && u.ativo !== false).map((u) => u.nome);
@@ -169,6 +182,14 @@ export function PedidoFormDialog({
     }
     setSalvando(true);
     const result = mode === "edit" ? await updatePedido(numeroPedidoOriginal, form) : await addPedido(form);
+    if (result.ok && mode === "create" && arquivos.length > 0) {
+      const uploadResult = await uploadPedidoAttachments(form.numeroPedido, arquivos);
+      if (!uploadResult.ok) {
+        setSalvando(false);
+        setErro(uploadResult.erro ?? "Pedido salvo, mas houve erro ao enviar anexos.");
+        return;
+      }
+    }
     setSalvando(false);
     if (!result.ok) {
       setErro(result.erro ?? (mode === "edit" ? "Erro ao editar pedido." : "Erro ao cadastrar pedido."));
@@ -177,6 +198,7 @@ export function PedidoFormDialog({
     setAberto(false);
     setErro("");
     setForm(initialValues);
+    setArquivos([]);
     onSaved?.();
   };
 
@@ -244,6 +266,17 @@ export function PedidoFormDialog({
               <Input type="date" value={form.dataPedido} onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))} />
             </div>
           ) : null}
+          {mode === "create" && isRepresentante ? (
+            <div className="space-y-1 md:col-span-2">
+              <Label>Anexos do pedido</Label>
+              <Input
+                type="file"
+                multiple
+                onChange={(e) => setArquivos(Array.from(e.target.files ?? []))}
+              />
+              <p className="text-xs text-slate-500">{arquivos.length} arquivo(s) selecionado(s)</p>
+            </div>
+          ) : null}
           {!(mode === "create" && isRepresentante) ? (
             <>
               <div className="space-y-1">
@@ -287,6 +320,51 @@ export function PedidoFormDialog({
                 </Select>
               </div>
             </>
+          ) : null}
+          {mode === "edit" ? (
+            <div className="space-y-2 md:col-span-2">
+              <Label>Anexos</Label>
+              {anexosDoPedido.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhum anexo neste pedido.</p>
+              ) : (
+                <div className="space-y-2">
+                  {anexosDoPedido.map((anexo) => (
+                    <div key={anexo.id} className="flex items-center justify-between rounded-md border border-slate-200 p-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-800">{anexo.nomeOriginal}</p>
+                        <p className="text-xs text-slate-500">
+                          {(anexo.tamanhoBytes / 1024).toFixed(1)} KB | {new Date(anexo.criadoEm).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 px-2 text-xs"
+                          onClick={async () => {
+                            const result = await downloadPedidoAttachment(numeroPedidoOriginal, anexo.id, anexo.nomeOriginal, true);
+                            if (!result.ok) setErro(result.erro ?? "Erro ao abrir anexo.");
+                          }}
+                        >
+                          Abrir
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 px-2 text-xs"
+                          onClick={async () => {
+                            const result = await downloadPedidoAttachment(numeroPedidoOriginal, anexo.id, anexo.nomeOriginal, false);
+                            if (!result.ok) setErro(result.erro ?? "Erro ao baixar anexo.");
+                          }}
+                        >
+                          Baixar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : null}
         </div>
 

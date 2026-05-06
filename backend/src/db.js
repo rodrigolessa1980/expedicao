@@ -80,6 +80,20 @@ function mapPedidoChangeLog(row) {
   };
 }
 
+function mapPedidoAttachment(row) {
+  return {
+    id: row.id,
+    pedidoNumero: row.pedido_numero,
+    nomeOriginal: row.nome_original,
+    nomeStorage: row.nome_storage,
+    caminhoStorage: row.caminho_storage,
+    mimeType: row.mime_type,
+    tamanhoBytes: Number(row.tamanho_bytes || 0),
+    criadoPor: row.criado_por,
+    criadoEm: row.criado_em
+  };
+}
+
 function normalizeFieldValue(value) {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -178,6 +192,25 @@ export async function ensureDb() {
       CONSTRAINT fk_pedido_logs_pedido FOREIGN KEY (pedido_numero) REFERENCES pedidos(numero_pedido)
     )
   `);
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS pedido_attachments (
+      id VARCHAR(64) PRIMARY KEY,
+      pedido_numero VARCHAR(60) NOT NULL,
+      nome_original VARCHAR(255) NOT NULL,
+      nome_storage VARCHAR(255) NOT NULL,
+      caminho_storage VARCHAR(500) NOT NULL,
+      mime_type VARCHAR(120) NOT NULL,
+      tamanho_bytes BIGINT NOT NULL,
+      criado_por VARCHAR(120) NOT NULL,
+      criado_em DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      CONSTRAINT fk_pedido_attachments_pedido FOREIGN KEY (pedido_numero) REFERENCES pedidos(numero_pedido)
+    )
+  `);
+  try {
+    await conn.query("CREATE INDEX idx_pedido_attachments_pedido_criado_em ON pedido_attachments (pedido_numero, criado_em)");
+  } catch (error) {
+    if (String(error?.code) !== "ER_DUP_KEYNAME") throw error;
+  }
   try {
     await conn.query("CREATE INDEX idx_pedido_change_logs_pedido_changed_at ON pedido_change_logs (pedido_numero, changed_at)");
   } catch (error) {
@@ -543,4 +576,36 @@ export async function listOrderLogsByRole(user, numeroPedido) {
     [numeroPedido]
   );
   return rows.map(mapPedidoChangeLog);
+}
+
+export async function listOrderAttachmentsByRole(user, numeroPedido) {
+  const conn = getPool();
+  if (user.tipo === "representante") {
+    const [allowed] = await conn.query("SELECT 1 FROM pedidos WHERE numero_pedido = ? AND representante = ? LIMIT 1", [
+      numeroPedido,
+      user.nome
+    ]);
+    if (allowed.length === 0) return null;
+  }
+  const [rows] = await conn.query(
+    `SELECT id, pedido_numero, nome_original, nome_storage, caminho_storage, mime_type, tamanho_bytes, criado_por, criado_em
+      FROM pedido_attachments
+      WHERE pedido_numero = ?
+      ORDER BY criado_em DESC, id DESC`,
+    [numeroPedido]
+  );
+  return rows.map(mapPedidoAttachment);
+}
+
+export async function createOrderAttachment({ pedidoNumero, nomeOriginal, nomeStorage, caminhoStorage, mimeType, tamanhoBytes, criadoPor }) {
+  const conn = getPool();
+  const id = randomUUID();
+  const criadoEm = new Date();
+  await conn.query(
+    `INSERT INTO pedido_attachments
+      (id, pedido_numero, nome_original, nome_storage, caminho_storage, mime_type, tamanho_bytes, criado_por, criado_em)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, pedidoNumero, nomeOriginal, nomeStorage, caminhoStorage, mimeType, tamanhoBytes, criadoPor, criadoEm]
+  );
+  return { id, pedidoNumero, nomeOriginal, nomeStorage, caminhoStorage, mimeType, tamanhoBytes, criadoPor, criadoEm };
 }

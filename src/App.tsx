@@ -20,6 +20,8 @@ export default function App() {
   const status = useExportStore((state) => state.status);
   const loadingDados = useExportStore((state) => state.loading);
   const loadData = useExportStore((state) => state.loadData);
+  const loadPedidos = useExportStore((state) => state.loadPedidos);
+  const loadStatus = useExportStore((state) => state.loadStatus);
   const clearData = useExportStore((state) => state.clearData);
   const usuarioAtual = useAuthStore((state) => state.usuarioAtual);
   const logout = useAuthStore((state) => state.logout);
@@ -31,6 +33,15 @@ export default function App() {
     }
     void loadData();
   }, [usuarioAtual, loadData, clearData]);
+
+  useEffect(() => {
+    if (!usuarioAtual) return;
+    const interval = window.setInterval(() => {
+      if (document.hidden) return;
+      void Promise.all([loadPedidos(), loadStatus()]);
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [usuarioAtual, loadPedidos, loadStatus]);
 
   const isAdmin = usuarioAtual?.tipo === "administrador";
   const canManage = isAdmin;

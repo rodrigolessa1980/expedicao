@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { TipoUsuario, Usuario } from "../types";
-import { apiRequest } from "../services/api";
+import { apiRequest, setUnauthorizedHandler } from "../services/api";
 
 type NovoUsuario = {
   nome: string;
@@ -121,3 +121,7 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+setUnauthorizedHandler(() => {
+  useAuthStore.getState().logout();
+});

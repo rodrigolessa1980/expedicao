@@ -19,6 +19,16 @@ export type Pedido = {
   updatedAt?: string | null;
 };
 
+export type PedidoAttachment = {
+  id: string;
+  pedidoNumero: string;
+  nomeOriginal: string;
+  mimeType: string;
+  tamanhoBytes: number;
+  criadoPor: string;
+  criadoEm: string;
+};
+
 export type PedidoField =
   | "numeroPedido"
   | "representante"
