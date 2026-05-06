@@ -316,7 +316,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
   }
   const required = isRepresentante
     ? ["numeroPedido", "numeroNF", "cliente", "dataPedido"]
-    : ["numeroPedido", "numeroNF", "cliente", "dataFaturamento", "dataExpedicao", "prazoEntrega", "statusAtual"];
+    : ["numeroPedido", "numeroNF", "cliente", "prazoEntrega", "statusAtual"];
 
   const missing = required.find((key) => !String(payload[key] ?? "").trim());
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
@@ -336,7 +336,16 @@ app.post("/api/orders", requireAuth, async (req, res) => {
       }
     : {
         ...payload,
-        dataPedido: String(payload.dataPedido ?? "").trim() || String(payload.dataFaturamento ?? "").trim() || hoje
+        dataPedido: String(payload.dataPedido ?? "").trim() || String(payload.dataFaturamento ?? "").trim() || hoje,
+        dataFaturamento:
+          String(payload.dataFaturamento ?? "").trim() ||
+          String(payload.dataPedido ?? "").trim() ||
+          hoje,
+        dataExpedicao:
+          String(payload.dataExpedicao ?? "").trim() ||
+          String(payload.dataFaturamento ?? "").trim() ||
+          String(payload.dataPedido ?? "").trim() ||
+          hoje
       };
 
   try {
@@ -355,16 +364,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
 
 app.put("/api/orders/:numeroPedido", requireAuth, requireAdmin, async (req, res) => {
   const payload = req.body ?? {};
-  const required = [
-    "numeroPedido",
-    "numeroNF",
-    "cliente",
-    "dataPedido",
-    "dataFaturamento",
-    "dataExpedicao",
-    "prazoEntrega",
-    "statusAtual"
-  ];
+  const required = ["numeroPedido", "numeroNF", "cliente", "statusAtual"];
   const missing = required.find((key) => !payload[key]);
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
 

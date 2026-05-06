@@ -426,10 +426,19 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
       return null;
     }
     const current = rows[0];
-  const dataEntrega =
-    payload.statusAtual === "finalizado"
-      ? payload.dataEntrega || current.data_entrega || new Date().toISOString().slice(0, 10)
-      : payload.dataEntrega || null;
+    const numeroPedido = String(payload.numeroPedido ?? "").trim() || current.numero_pedido;
+    const representante = String(payload.representante ?? "").trim() || current.representante || "";
+    const numeroNF = String(payload.numeroNF ?? "").trim() || current.numero_nf;
+    const cliente = String(payload.cliente ?? "").trim() || current.cliente;
+    const dataPedido = String(payload.dataPedido ?? "").trim() || current.data_pedido;
+    const dataFaturamento = String(payload.dataFaturamento ?? "").trim() || current.data_faturamento || dataPedido;
+    const dataExpedicao = String(payload.dataExpedicao ?? "").trim() || current.data_expedicao || dataFaturamento;
+    const prazoEntrega = String(payload.prazoEntrega ?? "").trim() || current.prazo_entrega || dataExpedicao;
+    const statusAtual = String(payload.statusAtual ?? "").trim() || current.status_atual;
+    const dataEntrega =
+      statusAtual === "finalizado"
+        ? payload.dataEntrega || current.data_entrega || new Date().toISOString().slice(0, 10)
+        : payload.dataEntrega || null;
     const now = new Date();
 
     await trx.query(
@@ -438,39 +447,39 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
             prazo_entrega = ?, data_entrega = ?, status_atual = ?, updated_at = ?
       WHERE numero_pedido = ?`,
       [
-        payload.numeroPedido,
-        payload.representante || null,
-        payload.numeroNF,
-        payload.cliente,
-        payload.dataPedido,
-        payload.dataFaturamento,
-        payload.dataExpedicao,
-        payload.prazoEntrega,
+        numeroPedido,
+        representante || null,
+        numeroNF,
+        cliente,
+        dataPedido,
+        dataFaturamento,
+        dataExpedicao,
+        prazoEntrega,
         dataEntrega,
-        payload.statusAtual,
+        statusAtual,
         now,
         numeroPedidoOriginal
       ]
     );
 
     const updatedSnapshot = {
-      numeroPedido: payload.numeroPedido,
-      representante: payload.representante || "",
-      numeroNF: payload.numeroNF,
-      cliente: payload.cliente,
-      dataPedido: payload.dataPedido,
-      dataFaturamento: payload.dataFaturamento,
-      dataExpedicao: payload.dataExpedicao,
-      prazoEntrega: payload.prazoEntrega,
+      numeroPedido,
+      representante,
+      numeroNF,
+      cliente,
+      dataPedido,
+      dataFaturamento,
+      dataExpedicao,
+      prazoEntrega,
       dataEntrega: dataEntrega || "",
-      statusAtual: payload.statusAtual
+      statusAtual
     };
     const logRows = trackedPedidoFields
       .map((entry) => {
         const from = normalizeFieldValue(current[entry.column]);
         const to = normalizeFieldValue(updatedSnapshot[entry.field]);
         if (from === to) return null;
-        return [randomUUID(), payload.numeroPedido, entry.field, entry.label, from || null, to || null, changedBy || "Sistema", now];
+        return [randomUUID(), numeroPedido, entry.field, entry.label, from || null, to || null, changedBy || "Sistema", now];
       })
       .filter(Boolean);
     for (const row of logRows) {
