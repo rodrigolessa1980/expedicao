@@ -316,7 +316,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
   }
   const required = isRepresentante
     ? ["numeroPedido", "numeroNF", "cliente", "dataPedido"]
-    : ["numeroPedido", "numeroNF", "cliente", "dataPedido", "dataFaturamento", "dataExpedicao", "prazoEntrega", "statusAtual"];
+    : ["numeroPedido", "numeroNF", "cliente", "dataFaturamento", "dataExpedicao", "prazoEntrega", "statusAtual"];
 
   const missing = required.find((key) => !String(payload[key] ?? "").trim());
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
@@ -334,7 +334,10 @@ app.post("/api/orders", requireAuth, async (req, res) => {
         prazoEntrega: hoje,
         statusAtual: "pedido-adicionado"
       }
-    : payload;
+    : {
+        ...payload,
+        dataPedido: String(payload.dataPedido ?? "").trim() || String(payload.dataFaturamento ?? "").trim() || hoje
+      };
 
   try {
     const novoPedido = await createOrder(payloadNormalizado);

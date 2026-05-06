@@ -293,19 +293,31 @@ export function PedidoFormDialog({
             )}
             <Input value={form.cliente} onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))} />
           </div>
-          {mode === "create" && isRepresentante ? (
-            <div className="space-y-1">
+          <div className="space-y-1">
+            {mode === "create" && isRepresentante ? (
               <Label>
                 Data do pedido <span className="text-red-500">*</span>
               </Label>
-              <Input type="date" value={form.dataPedido} onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))} />
-            </div>
-          ) : null}
-          {mode === "create" && isRepresentante ? (
-            <div className="space-y-2 md:col-span-2">
+            ) : mode === "create" ? (
               <Label>
-                Anexos do pedido <span className="text-red-500">*</span>
+                Data do pedido <span className="font-normal text-slate-400">(opcional)</span>
               </Label>
+            ) : (
+              renderFieldLabel("dataPedido")
+            )}
+            <Input type="date" value={form.dataPedido} onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))} />
+          </div>
+          {mode === "create" ? (
+            <div className="space-y-2 md:col-span-2">
+              {isRepresentante ? (
+                <Label>
+                  Anexos do pedido <span className="text-red-500">*</span>
+                </Label>
+              ) : (
+                <Label>
+                  Anexos do pedido <span className="font-normal text-slate-400">(opcional)</span>
+                </Label>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -348,16 +360,16 @@ export function PedidoFormDialog({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">Nenhum arquivo selecionado. Pelo menos um anexo e obrigatorio.</p>
+                <p className="text-xs text-slate-400">
+                  {isRepresentante
+                    ? "Nenhum arquivo selecionado. Pelo menos um anexo e obrigatorio."
+                    : "Nenhum arquivo selecionado."}
+                </p>
               )}
             </div>
           ) : null}
           {!(mode === "create" && isRepresentante) ? (
             <>
-              <div className="space-y-1">
-                {renderFieldLabel("dataPedido")}
-                <Input type="date" value={form.dataPedido} onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))} />
-              </div>
               <div className="space-y-1">
                 {renderFieldLabel("dataFaturamento")}
                 <Input type="date" value={form.dataFaturamento} onChange={(e) => setForm((f) => ({ ...f, dataFaturamento: e.target.value }))} />
