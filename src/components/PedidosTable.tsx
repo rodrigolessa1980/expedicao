@@ -33,6 +33,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
   const [filtroRepresentante, setFiltroRepresentante] = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [apenasAtrasados, setApenasAtrasados] = useState("todos");
+  const [abaAtiva, setAbaAtiva] = useState<"todos" | "ativos" | "concluidos">("todos");
 
   const representantes = useMemo(
     () =>
@@ -71,7 +72,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
     return dados.filter((pedido) => new Date(`${pedido.dataPedido}T00:00:00`).getTime() >= inicioTs);
   }, [dados, periodoRapido, dataInicio, dataFim]);
 
-  const filtrados = useMemo(
+  const filtradosBase = useMemo(
     () =>
       dadosComFiltroPeriodo.filter((pedido) => {
         const matchCliente = pedido.cliente.toLowerCase().includes(filtroCliente.toLowerCase());
@@ -81,6 +82,29 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         return matchCliente && matchRepresentante && matchStatus && matchAtrasado;
       }),
     [dadosComFiltroPeriodo, filtroCliente, filtroRepresentante, filtroStatus, apenasAtrasados],
+  );
+
+  const counts = useMemo(() => {
+    const ativos = filtradosBase.filter((p) => {
+      const s = status.find((i) => i.id === p.statusAtual);
+      return !(s?.nome.toLowerCase().includes("finalizado") || !!p.dataEntrega);
+    }).length;
+    const concluidos = filtradosBase.length - ativos;
+    return { todos: filtradosBase.length, ativos, concluidos };
+  }, [filtradosBase, status]);
+
+  const filtrados = useMemo(
+    () =>
+      filtradosBase.filter((pedido) => {
+        const statusItem = status.find((s) => s.id === pedido.statusAtual);
+        const isConcluido = statusItem?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
+        
+        // Filtro de aba
+        if (abaAtiva === "ativos" && isConcluido) return false;
+        if (abaAtiva === "concluidos" && !isConcluido) return false;
+        return true;
+      }),
+    [filtradosBase, abaAtiva, status],
   );
 
   const columns = useMemo<ColumnDef<Pedido>[]>(
@@ -109,9 +133,13 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         header: "Prazo",
         cell: ({ row }) => {
           const pedido = row.original;
-          const atrasado = isAtrasado(pedido.prazoEntrega);
-          const proximo = isPrazoProximo(pedido.prazoEntrega);
+          const statusAtual = status.find((s) => s.id === pedido.statusAtual);
+          const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
+          
+          const atrasado = !concluido && isAtrasado(pedido.prazoEntrega);
+          const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega);
           const dias = diasParaPrazo(pedido.prazoEntrega);
+          
           return (
             <span className={atrasado ? "font-semibold text-red-600" : proximo ? "font-semibold text-amber-600" : "text-slate-700"}>
               {dias} dias
@@ -254,11 +282,58 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         </Select>
       </div>
 
+      <div className="flex items-center gap-1 border-b border-slate-200 pb-1">
+        <button
+          type="button"
+          onClick={() => setAbaAtiva("todos")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+            abaAtiva === "todos"
+              ? "border-b-2 border-blue-600 text-blue-600"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Todos
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${abaAtiva === "todos" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+            {counts.todos}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setAbaAtiva("ativos")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+            abaAtiva === "ativos"
+              ? "border-b-2 border-blue-600 text-blue-600"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Em Aberto
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${abaAtiva === "ativos" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+            {counts.ativos}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setAbaAtiva("concluidos")}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+            abaAtiva === "concluidos"
+              ? "border-b-2 border-blue-600 text-blue-600"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Concluídos
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${abaAtiva === "concluidos" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+            {counts.concluidos}
+          </span>
+        </button>
+      </div>
+
       <div className="space-y-2 lg:hidden">
         {filtrados.map((pedido) => {
-          const atrasado = isAtrasado(pedido.prazoEntrega);
-          const proximo = isPrazoProximo(pedido.prazoEntrega);
           const statusAtual = status.find((s) => s.id === pedido.statusAtual);
+          const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
+          const atrasado = !concluido && isAtrasado(pedido.prazoEntrega);
+          const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega);
+          
           return (
             <div key={pedido.numeroPedido} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
@@ -335,137 +410,146 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         })}
       </div>
 
-      <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block">
-        <table className="w-full table-fixed border-collapse text-sm">
-          <thead className="bg-slate-100 text-slate-700">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                    <th
-                    key={header.id}
-                      className="cursor-pointer px-3 py-2 text-left font-medium break-words"
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row) => {
-              const atrasado = isAtrasado(row.original.prazoEntrega);
-              const proximo = isPrazoProximo(row.original.prazoEntrega);
-              const faixaPrazo = faixaPrazoPorEtapa(row.original.dataFaturamento, row.original.prazoEntrega);
-              const termometro = calcularCronogramaPedido(row.original);
-              const corSublinhado =
-                faixaPrazo === "verde"
-                  ? "border-b-2 border-emerald-500"
-                  : faixaPrazo === "amarela"
-                    ? "border-b-2 border-amber-500"
-                    : "border-b-2 border-red-500";
-              return (
-                <Fragment key={row.id}>
-                  <tr className="border-t border-slate-100">
-                    <td colSpan={row.getVisibleCells().length} className="px-3 pb-0 pt-2">
-                      {termometro.valido ? (
-                        <div className="space-y-1">
-                          <div className="relative h-2.5 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-100">
-                            <div className="flex h-full w-full">
-                              {termometro.segmentos.map((segmento) => (
-                                <div
-                                  key={segmento.id}
-                                  className="h-full"
-                                  style={{ width: `${segmento.percentual.toFixed(2)}%`, backgroundColor: segmento.cor }}
-                                  title={`${segmento.nome}: ${segmento.dias} dia(s)`}
-                                />
-                              ))}
-                              {termometro.naoUtilizadoPercentual > 0 ? (
-                                <div
-                                  className="h-full bg-slate-200"
-                                  style={{ width: `${termometro.naoUtilizadoPercentual.toFixed(2)}%` }}
-                                  title="Periodo nao utilizado ate o prazo"
-                                />
-                              ) : null}
-                            </div>
-                            {termometro.atrasado ? (
-                              <div
-                                className="absolute right-0 top-0 h-full bg-red-600/90"
-                                style={{ width: `${termometro.atrasoPercentual.toFixed(2)}%` }}
-                                title={`Atraso: ${termometro.atrasoDias} dia(s)`}
-                              />
-                            ) : null}
+      <div className="hidden lg:block">
+        <div className="mb-4 grid grid-cols-[70px_2fr_80px_1.5fr_100px_100px_100px_90px_100px_160px] gap-4 px-6 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          {table.getHeaderGroups()[0].headers.map((header) => (
+            <div
+              key={header.id}
+              className="cursor-pointer hover:text-slate-800"
+              onClick={header.column.getToggleSortingHandler()}
+            >
+              {flexRender(header.column.columnDef.header, header.getContext())}
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-4">
+          {table.getRowModel().rows.map((row) => {
+            const statusAtual = status.find((s) => s.id === row.original.statusAtual);
+            const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!row.original.dataEntrega;
+            const atrasado = !concluido && isAtrasado(row.original.prazoEntrega);
+            const proximo = !concluido && isPrazoProximo(row.original.prazoEntrega);
+            const termometro = calcularCronogramaPedido(row.original);
+
+            return (
+              <motion.div
+                key={row.id}
+                layout
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={() => {
+                  if (canManage && onPedidoClick) onPedidoClick(row.original);
+                }}
+                className={`group rounded-2xl border border-slate-200 bg-white p-1 shadow-sm transition-all hover:border-blue-200 hover:shadow-md ${
+                  canManage && onPedidoClick ? "cursor-pointer" : ""
+                } ${atrasado ? "bg-red-50/30" : proximo ? "bg-amber-50/20" : ""}`}
+              >
+                <div className="relative px-5 pt-7">
+                  {termometro.valido ? (
+                    <div className="relative h-2 w-full">
+                      {/* Seta do Dia Atual */}
+                      {(() => {
+                        const hoje = new Date();
+                        const dataInicio = new Date(`${row.original.dataPedido}T00:00:00`);
+                        const totalDias = termometro.totalDiasEscala;
+                        const diasDecorridos = Math.max(0, (hoje.getTime() - dataInicio.getTime()) / (24 * 60 * 60 * 1000));
+                        const percentualHoje = Math.min(100, (diasDecorridos / totalDias) * 100);
+
+                        return (
+                          <div
+                            className="absolute -top-4 z-10 flex flex-col items-center"
+                            style={{ left: `${percentualHoje.toFixed(2)}%`, transform: "translateX(-50%)" }}
+                          >
+                            <div className="h-0 w-0 border-l-[5px] border-r-[5px] border-t-[8px] border-l-transparent border-r-transparent border-t-amber-500" />
+                          </div>
+                        );
+                      })()}
+
+                      <div className="relative h-full w-full overflow-hidden rounded-full border border-slate-100 bg-slate-50">
+                        {/* Marcadores de Dias */}
+                        <div className="absolute inset-0 h-full w-full pointer-events-none">
+                          {Array.from({ length: termometro.totalDiasEscala + 1 }).map((_, i) => (
                             <div
-                              className="absolute bottom-0 top-0 w-0.5 bg-slate-900"
-                              style={{
-                                left:
-                                  termometro.prazoPercentual >= 100
-                                    ? "calc(100% - 1px)"
-                                    : `${termometro.prazoPercentual.toFixed(2)}%`,
-                              }}
-                              title="Marco do prazo de entrega"
+                              key={i}
+                              className="absolute h-full w-[1px] bg-slate-300/40"
+                              style={{ left: `${(i / termometro.totalDiasEscala * 100).toFixed(2)}%` }}
                             />
-                          </div>
-                          <div className="flex flex-wrap gap-2 pb-0.5 text-[10px] text-slate-500">
-                            <span className="inline-flex items-center gap-1">
-                              <span className="h-2 w-2 rounded-full bg-amber-500" />
-                              Data Faturamento
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <span className="h-2 w-2 rounded-full bg-blue-600" />
-                              Data Expedicao
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <span className="h-2 w-2 rounded-full bg-emerald-600" />
-                              Data da Entrega
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <span className="h-2 w-2 rounded-full bg-slate-300" />
-                              Nao utilizado
-                            </span>
-                            {termometro.atrasado ? (
-                              <span className="inline-flex items-center gap-1 font-semibold text-red-600">
-                                <span className="h-2 w-2 rounded-full bg-red-600" />
-                                Atraso
-                              </span>
-                            ) : null}
-                          </div>
+                          ))}
                         </div>
-                      ) : (
-                        <div className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] text-slate-500">
-                          Cronograma indisponivel: preencha Data do Pedido e Prazo de entrega.
+
+                        <div className="flex h-full w-full">
+                          {termometro.segmentos.map((segmento) => (
+                            <div
+                              key={segmento.id}
+                              className="h-full"
+                              style={{ width: `${segmento.percentual.toFixed(2)}%`, backgroundColor: segmento.cor }}
+                              title={`${segmento.nome}: ${segmento.dias} dia(s)`}
+                            />
+                          ))}
+                          {termometro.naoUtilizadoPercentual > 0 ? (
+                            <div
+                              className="h-full bg-slate-200/50"
+                              style={{ width: `${termometro.naoUtilizadoPercentual.toFixed(2)}%` }}
+                              title="Periodo nao utilizado ate o prazo"
+                            />
+                          ) : null}
                         </div>
-                      )}
-                    </td>
-                  </tr>
-                  <motion.tr
-                    layout
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    onClick={() => {
-                      if (canManage && onPedidoClick) onPedidoClick(row.original);
-                    }}
-                    className={
-                      `${corSublinhado} ${
-                        atrasado
-                          ? "bg-red-50/70"
-                          : proximo
-                            ? "bg-amber-50/60"
-                            : "border-t border-slate-100"
-                      } ${canManage && onPedidoClick ? "cursor-pointer hover:bg-blue-50/50" : ""}`
-                    }
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="max-w-0 px-3 py-3 align-top break-words text-slate-700">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </motion.tr>
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                        {termometro.atrasado && !concluido ? (
+                          <div
+                            className="absolute right-0 top-0 h-full bg-red-600/90"
+                            style={{ width: `${termometro.atrasoPercentual.toFixed(2)}%` }}
+                            title={`Atraso: ${termometro.atrasoDias} dia(s)`}
+                          />
+                        ) : null}
+                        <div
+                          className="absolute bottom-0 top-0 w-0.5 bg-slate-900"
+                          style={{
+                            left:
+                              termometro.prazoPercentual >= 100
+                                ? "calc(100% - 1px)"
+                                : `${termometro.prazoPercentual.toFixed(2)}%`,
+                          }}
+                          title="Marco do prazo de entrega"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-slate-50 px-2 py-1 text-[10px] text-slate-400">
+                      Cronograma indisponivel.
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-[70px_2fr_80px_1.5fr_100px_100px_100px_90px_100px_160px] items-start gap-4 px-5 py-4 text-sm text-slate-700">
+                  {row.getVisibleCells().map((cell) => (
+                    <div key={cell.id} className="min-w-0 break-words">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </div>
+                  ))}
+                </div>
+
+                {termometro.valido && (
+                  <div className="flex gap-3 px-5 pb-2 text-[9px] font-medium text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Faturamento
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-600" /> Expedicao
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" /> Entrega
+                    </span>
+                    {termometro.atrasado && !concluido && (
+                      <span className="flex items-center gap-1 text-red-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Atraso
+                      </span>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
       </div>
       {erroAtualizacao ? <p className="text-sm text-red-600">{erroAtualizacao}</p> : null}
     </div>
