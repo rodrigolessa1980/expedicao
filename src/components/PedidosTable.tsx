@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { dayjs } from "../utils/date";
 import {
   flexRender,
   getCoreRowModel,
@@ -9,7 +10,7 @@ import {
 } from "@tanstack/react-table";
 import { motion } from "framer-motion";
 import type { Pedido } from "../types";
-import { diasParaPrazo, faixaPrazoPorEtapa, formatarData, isAtrasado, isPrazoProximo } from "../utils/date";
+import { diasParaPrazo, formatarData, isAtrasado, isPrazoProximo } from "../utils/date";
 import { calcularCronogramaPedido } from "../utils/cronogramaPedido";
 import { useExportStore } from "../store/useExportStore";
 import { Input } from "./ui/input";
@@ -444,23 +445,47 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                   canManage && onPedidoClick ? "cursor-pointer" : ""
                 } ${atrasado ? "bg-red-50/30" : proximo ? "bg-amber-50/20" : ""}`}
               >
-                <div className="relative px-5 pt-7">
+                <div className="relative px-5 pt-10">
                   {termometro.valido ? (
                     <div className="relative h-2 w-full">
+                      {/* Marcacoes de Datas Superiores */}
+                      <div className="absolute -top-7 left-0 h-7 w-full pointer-events-none">
+                        {Array.from({ length: termometro.totalDiasEscala + 1 }).map((_, i) => {
+                          const dataInicio = dayjs(`${row.original.dataPedido}T00:00:00`);
+                          const dataTick = dataInicio.add(i, "day");
+                          const showLabel = termometro.totalDiasEscala <= 15 || i % Math.ceil(termometro.totalDiasEscala / 15) === 0;
+                          
+                          return (
+                            <div
+                              key={i}
+                              className="absolute flex flex-col items-center"
+                              style={{ left: `${(i / termometro.totalDiasEscala * 100).toFixed(2)}%`, transform: "translateX(-50%)" }}
+                            >
+                              {showLabel && (
+                                <span className="text-[7px] font-bold text-slate-300 transition-colors group-hover:text-slate-400">
+                                  {dataTick.format("DD/MM")}
+                                </span>
+                              )}
+                              <div className="h-1.5 w-[1px] bg-slate-200" />
+                            </div>
+                          );
+                        })}
+                      </div>
+
                       {/* Seta do Dia Atual */}
                       {(() => {
-                        const hoje = new Date();
-                        const dataInicio = new Date(`${row.original.dataPedido}T00:00:00`);
+                        const hoje = dayjs().startOf("day");
+                        const dataInicio = dayjs(`${row.original.dataPedido}T00:00:00`);
                         const totalDias = termometro.totalDiasEscala;
-                        const diasDecorridos = Math.max(0, (hoje.getTime() - dataInicio.getTime()) / (24 * 60 * 60 * 1000));
+                        const diasDecorridos = Math.max(0, hoje.diff(dataInicio, "day", true));
                         const percentualHoje = Math.min(100, (diasDecorridos / totalDias) * 100);
 
                         return (
                           <div
-                            className="absolute -top-4 z-10 flex flex-col items-center"
+                            className="absolute -top-3 z-10 flex flex-col items-center"
                             style={{ left: `${percentualHoje.toFixed(2)}%`, transform: "translateX(-50%)" }}
                           >
-                            <div className="h-0 w-0 border-l-[5px] border-r-[5px] border-t-[8px] border-l-transparent border-r-transparent border-t-amber-500" />
+                            <div className="h-0 w-0 border-l-[4px] border-r-[4px] border-t-[6px] border-l-transparent border-r-transparent border-t-amber-500" />
                           </div>
                         );
                       })()}

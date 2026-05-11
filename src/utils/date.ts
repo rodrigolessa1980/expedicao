@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+export { dayjs };
 
 export function diasParaPrazo(prazoEntrega: string): number {
   return dayjs(prazoEntrega).startOf("day").diff(dayjs().startOf("day"), "day");
