@@ -24,6 +24,24 @@ export function formatarData(data: string): string {
   return dayjs(data).format("DD/MM/YYYY");
 }
 
+export function infoFinalizado(
+  prazoEntrega: string,
+  dataEntrega: string,
+): { label: string; cor: "verde" | "vermelha" } {
+  const prazo = dayjs(prazoEntrega).startOf("day");
+  const entrega = dayjs(dataEntrega).startOf("day");
+  const diff = prazo.diff(entrega, "day"); // positivo = antecipado, negativo = atrasado
+
+  if (diff > 0) {
+    return { label: `${diff} dia${diff !== 1 ? "s" : ""} de antecedência`, cor: "verde" };
+  }
+  if (diff < 0) {
+    const atraso = Math.abs(diff);
+    return { label: `Atraso ${atraso} dia${atraso !== 1 ? "s" : ""}`, cor: "vermelha" };
+  }
+  return { label: "no prazo", cor: "verde" };
+}
+
 type FaixaPrazo = "verde" | "amarela" | "vermelha";
 
 export function faixaPrazoPorEtapa(dataFaturamento: string, prazoEntrega: string): FaixaPrazo {

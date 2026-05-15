@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-table";
 import { motion } from "framer-motion";
 import type { Pedido } from "../types";
-import { diasParaPrazo, formatarData, isAtrasado, isPrazoProximo } from "../utils/date";
+import { diasParaPrazo, formatarData, infoFinalizado, isAtrasado, isPrazoProximo } from "../utils/date";
 import { calcularCronogramaPedido } from "../utils/cronogramaPedido";
 import { useExportStore } from "../store/useExportStore";
 import { Input } from "./ui/input";
@@ -136,11 +136,20 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           const pedido = row.original;
           const statusAtual = status.find((s) => s.id === pedido.statusAtual);
           const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
-          
+
+          if (concluido && pedido.dataEntrega) {
+            const info = infoFinalizado(pedido.prazoEntrega, pedido.dataEntrega);
+            return (
+              <span className={info.cor === "verde" ? "font-semibold text-green-600" : "font-semibold text-red-600"}>
+                {info.label}
+              </span>
+            );
+          }
+
           const atrasado = !concluido && isAtrasado(pedido.prazoEntrega);
           const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega);
           const dias = diasParaPrazo(pedido.prazoEntrega);
-          
+
           return (
             <span className={atrasado ? "font-semibold text-red-600" : proximo ? "font-semibold text-amber-600" : "text-slate-700"}>
               {dias} dias
@@ -358,9 +367,18 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                 <p>
                   <span className="font-medium text-slate-700">Expedicao:</span> {formatarData(pedido.dataExpedicao)}
                 </p>
-                <p className={atrasado ? "font-semibold text-red-600" : proximo ? "font-semibold text-amber-600" : "text-slate-700"}>
-                  <span className="font-medium text-slate-700">Prazo:</span> {diasParaPrazo(pedido.prazoEntrega)} dias
-                </p>
+                {concluido && pedido.dataEntrega ? (() => {
+                  const info = infoFinalizado(pedido.prazoEntrega, pedido.dataEntrega);
+                  return (
+                    <p className={info.cor === "verde" ? "font-semibold text-green-600" : "font-semibold text-red-600"}>
+                      <span className="font-medium text-slate-700">Prazo:</span> {info.label}
+                    </p>
+                  );
+                })() : (
+                  <p className={atrasado ? "font-semibold text-red-600" : proximo ? "font-semibold text-amber-600" : "text-slate-700"}>
+                    <span className="font-medium text-slate-700">Prazo:</span> {diasParaPrazo(pedido.prazoEntrega)} dias
+                  </p>
+                )}
                 <p>
                   <span className="font-medium text-slate-700">Entrega:</span> {pedido.dataEntrega ? formatarData(pedido.dataEntrega) : "-"}
                 </p>
