@@ -1,4 +1,5 @@
 import type { Pedido } from "../types";
+import { prazoEfetivoEntrega } from "./date";
 
 const MS_DIA = 24 * 60 * 60 * 1000;
 
@@ -51,8 +52,9 @@ const diffDias = (inicio: Date, fim: Date) => Math.max(0, Math.round((fim.getTim
 
 export function calcularCronogramaPedido(pedido: Pedido): CronogramaPedido {
   const dataPedido = parseData(pedido.dataPedido);
-  const prazoEntrega = parseData(pedido.prazoEntrega);
-  if (!dataPedido || !prazoEntrega || prazoEntrega.getTime() < dataPedido.getTime()) return vazio;
+  const prazoReferencia = parseData(prazoEfetivoEntrega(pedido.prazoEntrega, pedido.dataAgendamento));
+  if (!dataPedido || !prazoReferencia || prazoReferencia.getTime() < dataPedido.getTime()) return vazio;
+  const prazoEntrega = prazoReferencia;
 
   const dataFaturamento = parseData(pedido.dataFaturamento);
   const dataExpedicao = parseData(pedido.dataExpedicao);

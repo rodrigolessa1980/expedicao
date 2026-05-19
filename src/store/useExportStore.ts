@@ -56,6 +56,7 @@ function normalizePedido(pedido: Pedido): Pedido {
     dataFaturamento: normalizeDate(pedido.dataFaturamento),
     dataExpedicao: normalizeDate(pedido.dataExpedicao),
     prazoEntrega: normalizeDate(pedido.prazoEntrega),
+    dataAgendamento: normalizeDate(pedido.dataAgendamento),
     dataEntrega: normalizeDate(pedido.dataEntrega),
     createdAt: pedido.createdAt ?? null,
     updatedAt: pedido.updatedAt ?? null,

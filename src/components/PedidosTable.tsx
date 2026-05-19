@@ -79,7 +79,8 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         const matchCliente = pedido.cliente.toLowerCase().includes(filtroCliente.toLowerCase());
         const matchRepresentante = filtroRepresentante === "todos" || pedido.representante === filtroRepresentante;
         const matchStatus = filtroStatus === "todos" || pedido.statusAtual === filtroStatus;
-        const matchAtrasado = apenasAtrasados === "todos" || (apenasAtrasados === "sim" && isAtrasado(pedido.prazoEntrega));
+        const matchAtrasado =
+          apenasAtrasados === "todos" || (apenasAtrasados === "sim" && isAtrasado(pedido.prazoEntrega, pedido.dataAgendamento));
         return matchCliente && matchRepresentante && matchStatus && matchAtrasado;
       }),
     [dadosComFiltroPeriodo, filtroCliente, filtroRepresentante, filtroStatus, apenasAtrasados],
@@ -138,7 +139,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
 
           if (concluido && pedido.dataEntrega) {
-            const info = infoFinalizado(pedido.prazoEntrega, pedido.dataEntrega);
+            const info = infoFinalizado(pedido.prazoEntrega, pedido.dataEntrega, pedido.dataAgendamento);
             return (
               <span className={info.cor === "verde" ? "font-semibold text-green-600" : "font-semibold text-red-600"}>
                 {info.label}
@@ -146,15 +147,23 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
             );
           }
 
-          const atrasado = !concluido && isAtrasado(pedido.prazoEntrega);
-          const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega);
-          const dias = diasParaPrazo(pedido.prazoEntrega);
+          const atrasado = !concluido && isAtrasado(pedido.prazoEntrega, pedido.dataAgendamento);
+          const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega, pedido.dataAgendamento);
+          const dias = diasParaPrazo(pedido.prazoEntrega, pedido.dataAgendamento);
 
           return (
             <span className={atrasado ? "font-semibold text-red-600" : proximo ? "font-semibold text-amber-600" : "text-slate-700"}>
               {dias} dias
             </span>
           );
+        },
+      },
+      {
+        accessorKey: "dataAgendamento",
+        header: "Agendamento",
+        cell: ({ row }) => {
+          const dataAgendamento = row.original.dataAgendamento;
+          return dataAgendamento ? formatarData(dataAgendamento) : "-";
         },
       },
       {
@@ -341,8 +350,8 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         {filtrados.map((pedido) => {
           const statusAtual = status.find((s) => s.id === pedido.statusAtual);
           const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
-          const atrasado = !concluido && isAtrasado(pedido.prazoEntrega);
-          const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega);
+          const atrasado = !concluido && isAtrasado(pedido.prazoEntrega, pedido.dataAgendamento);
+          const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega, pedido.dataAgendamento);
           
           return (
             <div key={pedido.numeroPedido} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -368,7 +377,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                   <span className="font-medium text-slate-700">Expedicao:</span> {formatarData(pedido.dataExpedicao)}
                 </p>
                 {concluido && pedido.dataEntrega ? (() => {
-                  const info = infoFinalizado(pedido.prazoEntrega, pedido.dataEntrega);
+                  const info = infoFinalizado(pedido.prazoEntrega, pedido.dataEntrega, pedido.dataAgendamento);
                   return (
                     <p className={info.cor === "verde" ? "font-semibold text-green-600" : "font-semibold text-red-600"}>
                       <span className="font-medium text-slate-700">Prazo:</span> {info.label}
@@ -376,7 +385,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                   );
                 })() : (
                   <p className={atrasado ? "font-semibold text-red-600" : proximo ? "font-semibold text-amber-600" : "text-slate-700"}>
-                    <span className="font-medium text-slate-700">Prazo:</span> {diasParaPrazo(pedido.prazoEntrega)} dias
+                    <span className="font-medium text-slate-700">Prazo:</span> {diasParaPrazo(pedido.prazoEntrega, pedido.dataAgendamento)} dias
                   </p>
                 )}
                 <p>
@@ -446,8 +455,8 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           {table.getRowModel().rows.map((row) => {
             const statusAtual = status.find((s) => s.id === row.original.statusAtual);
             const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!row.original.dataEntrega;
-            const atrasado = !concluido && isAtrasado(row.original.prazoEntrega);
-            const proximo = !concluido && isPrazoProximo(row.original.prazoEntrega);
+            const atrasado = !concluido && isAtrasado(row.original.prazoEntrega, row.original.dataAgendamento);
+            const proximo = !concluido && isPrazoProximo(row.original.prazoEntrega, row.original.dataAgendamento);
             const termometro = calcularCronogramaPedido(row.original);
 
             return (

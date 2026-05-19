@@ -18,6 +18,7 @@ const initialValues = {
   dataFaturamento: "",
   dataExpedicao: "",
   prazoEntrega: "",
+  dataAgendamento: "",
   dataEntrega: "",
   statusAtual: "",
 };
@@ -31,6 +32,7 @@ const FIELD_LABELS: Record<PedidoField, string> = {
   dataFaturamento: "Data Faturamento",
   dataExpedicao: "Data Expedicao",
   prazoEntrega: "Prazo de Entrega",
+  dataAgendamento: "Agendamento de Entrega",
   dataEntrega: "Data da Entrega",
   statusAtual: "Status inicial",
 };
@@ -141,6 +143,7 @@ export function PedidoFormDialog({
         dataFaturamento: initialPedido.dataFaturamento,
         dataExpedicao: initialPedido.dataExpedicao,
         prazoEntrega: initialPedido.prazoEntrega,
+        dataAgendamento: initialPedido.dataAgendamento,
         dataEntrega: initialPedido.dataEntrega,
         statusAtual: initialPedido.statusAtual,
       });
@@ -405,11 +408,21 @@ export function PedidoFormDialog({
                 <Input type="date" value={form.prazoEntrega} onChange={(e) => setForm((f) => ({ ...f, prazoEntrega: e.target.value }))} />
               </div>
               <div className="space-y-1">
+                {renderFieldLabel("dataAgendamento")}
+                <Input
+                  type="date"
+                  value={form.dataAgendamento}
+                  onChange={(e) => setForm((f) => ({ ...f, dataAgendamento: e.target.value }))}
+                />
+                <p className="text-xs text-slate-500">
+                  Quando informado, o atraso e contado a partir desta data, nao do prazo contratual.
+                </p>
+              </div>
+              <div className="space-y-1">
                 {renderFieldLabel("dataEntrega")}
                 <Input
                   type="date"
                   value={form.dataEntrega}
-                  disabled
                   onChange={(e) => setForm((f) => ({ ...f, dataEntrega: e.target.value }))}
                 />
               </div>

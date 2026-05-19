@@ -60,6 +60,7 @@ function mapPedido(row) {
     dataFaturamento: row.data_faturamento,
     dataExpedicao: row.data_expedicao,
     prazoEntrega: row.prazo_entrega,
+    dataAgendamento: row.data_agendamento || "",
     dataEntrega: row.data_entrega || "",
     statusAtual: row.status_atual,
     createdAt: row.created_at || null,
@@ -109,6 +110,7 @@ const trackedPedidoFields = [
   { field: "dataFaturamento", column: "data_faturamento", label: "Data Faturamento" },
   { field: "dataExpedicao", column: "data_expedicao", label: "Data Expedicao" },
   { field: "prazoEntrega", column: "prazo_entrega", label: "Prazo de Entrega" },
+  { field: "dataAgendamento", column: "data_agendamento", label: "Agendamento de Entrega" },
   { field: "dataEntrega", column: "data_entrega", label: "Data da Entrega" },
   { field: "statusAtual", column: "status_atual", label: "Status" }
 ];
@@ -177,6 +179,7 @@ export async function ensureDb() {
   await ensureColumn("pedidos", "updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await ensureColumn("pedidos", "created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await ensureColumn("pedidos", "data_pedido DATE NULL");
+  await ensureColumn("pedidos", "data_agendamento DATE NULL");
   await conn.query("UPDATE pedidos SET data_pedido = data_faturamento WHERE data_pedido IS NULL");
   await conn.query("ALTER TABLE pedidos MODIFY COLUMN representante VARCHAR(120) NULL");
   await conn.query(`
@@ -378,12 +381,16 @@ export async function listOrdersByRole(user) {
 
 export async function createOrder(payload) {
   const conn = getPool();
-  const dataEntrega = payload.statusAtual === "finalizado" ? new Date().toISOString().slice(0, 10) : null;
+  const dataEntregaInformada = String(payload.dataEntrega ?? "").trim();
+  const dataEntrega =
+    dataEntregaInformada ||
+    (payload.statusAtual === "finalizado" ? new Date().toISOString().slice(0, 10) : null);
+  const dataAgendamento = String(payload.dataAgendamento ?? "").trim() || null;
   const now = new Date();
   await conn.query(
     `INSERT INTO pedidos
-      (numero_pedido, representante, numero_nf, cliente, data_pedido, data_faturamento, data_expedicao, prazo_entrega, data_entrega, status_atual, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (numero_pedido, representante, numero_nf, cliente, data_pedido, data_faturamento, data_expedicao, prazo_entrega, data_agendamento, data_entrega, status_atual, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       payload.numeroPedido,
       payload.representante || null,
@@ -393,6 +400,7 @@ export async function createOrder(payload) {
       payload.dataFaturamento,
       payload.dataExpedicao,
       payload.prazoEntrega,
+      dataAgendamento,
       dataEntrega,
       payload.statusAtual,
       now,
@@ -408,6 +416,7 @@ export async function createOrder(payload) {
     dataFaturamento: payload.dataFaturamento,
     dataExpedicao: payload.dataExpedicao,
     prazoEntrega: payload.prazoEntrega,
+    dataAgendamento: dataAgendamento || "",
     dataEntrega: dataEntrega || "",
     statusAtual: payload.statusAtual,
     createdAt: now,
@@ -434,17 +443,22 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
     const dataFaturamento = String(payload.dataFaturamento ?? "").trim() || current.data_faturamento || dataPedido;
     const dataExpedicao = String(payload.dataExpedicao ?? "").trim() || current.data_expedicao || dataFaturamento;
     const prazoEntrega = String(payload.prazoEntrega ?? "").trim() || current.prazo_entrega || dataExpedicao;
+    const dataAgendamento =
+      payload.dataAgendamento === undefined
+        ? current.data_agendamento
+        : String(payload.dataAgendamento ?? "").trim() || null;
     const statusAtual = String(payload.statusAtual ?? "").trim() || current.status_atual;
+    const dataEntregaInformada = String(payload.dataEntrega ?? "").trim();
     const dataEntrega =
       statusAtual === "finalizado"
-        ? payload.dataEntrega || current.data_entrega || new Date().toISOString().slice(0, 10)
-        : payload.dataEntrega || null;
+        ? dataEntregaInformada || normalizeFieldValue(current.data_entrega) || new Date().toISOString().slice(0, 10)
+        : dataEntregaInformada || null;
     const now = new Date();
 
     await trx.query(
       `UPDATE pedidos
         SET numero_pedido = ?, representante = ?, numero_nf = ?, cliente = ?, data_pedido = ?, data_faturamento = ?, data_expedicao = ?,
-            prazo_entrega = ?, data_entrega = ?, status_atual = ?, updated_at = ?
+            prazo_entrega = ?, data_agendamento = ?, data_entrega = ?, status_atual = ?, updated_at = ?
       WHERE numero_pedido = ?`,
       [
         numeroPedido,
@@ -455,6 +469,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
         dataFaturamento,
         dataExpedicao,
         prazoEntrega,
+        dataAgendamento,
         dataEntrega,
         statusAtual,
         now,
@@ -471,6 +486,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
       dataFaturamento,
       dataExpedicao,
       prazoEntrega,
+      dataAgendamento: dataAgendamento || "",
       dataEntrega: dataEntrega || "",
       statusAtual
     };
@@ -527,6 +543,7 @@ export async function updateOrderStatus(numeroPedido, statusId) {
     dataFaturamento: current.data_faturamento,
     dataExpedicao: current.data_expedicao,
     prazoEntrega: current.prazo_entrega,
+    dataAgendamento: current.data_agendamento || "",
     dataEntrega: dataEntrega || "",
     statusAtual: statusId
   };
@@ -548,6 +565,7 @@ export async function listOrderChangesByRole(user, { since, limit = 500 }) {
         data_faturamento,
         data_expedicao,
         prazo_entrega,
+        data_agendamento,
         data_entrega,
         status_atual,
         updated_at

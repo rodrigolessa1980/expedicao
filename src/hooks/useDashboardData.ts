@@ -18,7 +18,10 @@ export function useDashboardData() {
   const proximosPrazos = useMemo(
     () =>
       [...pedidos]
-        .sort((a, b) => diasParaPrazo(a.prazoEntrega) - diasParaPrazo(b.prazoEntrega))
+        .sort(
+          (a, b) =>
+            diasParaPrazo(a.prazoEntrega, a.dataAgendamento) - diasParaPrazo(b.prazoEntrega, b.dataAgendamento),
+        )
         .slice(0, 5),
     [pedidos],
   );

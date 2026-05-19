@@ -13,6 +13,7 @@ export type Pedido = {
   dataFaturamento: string;
   dataExpedicao: string;
   prazoEntrega: string;
+  dataAgendamento: string;
   dataEntrega: string;
   statusAtual: string;
   createdAt?: string | null;
@@ -38,6 +39,7 @@ export type PedidoField =
   | "dataFaturamento"
   | "dataExpedicao"
   | "prazoEntrega"
+  | "dataAgendamento"
   | "dataEntrega"
   | "statusAtual";
 

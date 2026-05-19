@@ -9,7 +9,7 @@ import { Button } from "./components/ui/button";
 import { Dialog, DialogContent } from "./components/ui/dialog";
 import { useExportStore } from "./store/useExportStore";
 import { useAuthStore } from "./store/useAuthStore";
-import { formatarData, labelPrazo } from "./utils/date";
+import { formatarData, labelPrazo, prazoEfetivoEntrega } from "./utils/date";
 import { calcularCronogramaPedido } from "./utils/cronogramaPedido";
 
 type View = "dashboard" | "funil" | "status" | "usuarios";
@@ -438,8 +438,8 @@ export default function App() {
               <div key={pedido.numeroPedido} className="rounded-xl border border-red-200 bg-red-50/60 p-3">
                 <p className="text-xs text-slate-500">{pedido.numeroPedido}</p>
                 <p className="text-sm font-semibold text-slate-900">{pedido.cliente}</p>
-                <p className="text-xs text-slate-500">{formatarData(pedido.prazoEntrega)}</p>
-                <p className="mt-1 text-xs font-semibold text-red-700">{labelPrazo(pedido.prazoEntrega)}</p>
+                <p className="text-xs text-slate-500">{formatarData(prazoEfetivoEntrega(pedido.prazoEntrega, pedido.dataAgendamento))}</p>
+                <p className="mt-1 text-xs font-semibold text-red-700">{labelPrazo(pedido.prazoEntrega, pedido.dataAgendamento)}</p>
               </div>
             ))}
           </div>

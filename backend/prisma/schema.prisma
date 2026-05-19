@@ -53,6 +53,7 @@ model Pedido {
   dataFaturamento DateTime  @map("data_faturamento") @db.Date
   dataExpedicao   DateTime  @map("data_expedicao") @db.Date
   prazoEntrega    DateTime  @map("prazo_entrega") @db.Date
+  dataAgendamento DateTime? @map("data_agendamento") @db.Date
   dataEntrega     DateTime? @map("data_entrega") @db.Date
   statusAtual     String    @map("status_atual") @db.VarChar(80)
   createdAt       DateTime  @map("created_at") @db.DateTime(3)

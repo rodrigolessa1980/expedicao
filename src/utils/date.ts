@@ -1,22 +1,29 @@
 import dayjs from "dayjs";
 export { dayjs };
 
-export function diasParaPrazo(prazoEntrega: string): number {
-  return dayjs(prazoEntrega).startOf("day").diff(dayjs().startOf("day"), "day");
+/** Prazo usado para atraso: agendamento, quando informado, substitui o prazo contratual. */
+export function prazoEfetivoEntrega(prazoEntrega: string, dataAgendamento?: string): string {
+  const agendamento = dataAgendamento?.trim();
+  return agendamento || prazoEntrega;
 }
 
-export function labelPrazo(prazoEntrega: string): string {
-  const dias = diasParaPrazo(prazoEntrega);
+export function diasParaPrazo(prazoEntrega: string, dataAgendamento?: string): number {
+  const prazo = prazoEfetivoEntrega(prazoEntrega, dataAgendamento);
+  return dayjs(prazo).startOf("day").diff(dayjs().startOf("day"), "day");
+}
+
+export function labelPrazo(prazoEntrega: string, dataAgendamento?: string): string {
+  const dias = diasParaPrazo(prazoEntrega, dataAgendamento);
   if (dias < 0) return "ATRASADO";
   return `D-${dias}`;
 }
 
-export function isAtrasado(prazoEntrega: string): boolean {
-  return diasParaPrazo(prazoEntrega) < 0;
+export function isAtrasado(prazoEntrega: string, dataAgendamento?: string): boolean {
+  return diasParaPrazo(prazoEntrega, dataAgendamento) < 0;
 }
 
-export function isPrazoProximo(prazoEntrega: string): boolean {
-  const dias = diasParaPrazo(prazoEntrega);
+export function isPrazoProximo(prazoEntrega: string, dataAgendamento?: string): boolean {
+  const dias = diasParaPrazo(prazoEntrega, dataAgendamento);
   return dias >= 0 && dias <= 2;
 }
 
@@ -27,8 +34,9 @@ export function formatarData(data: string): string {
 export function infoFinalizado(
   prazoEntrega: string,
   dataEntrega: string,
+  dataAgendamento?: string,
 ): { label: string; cor: "verde" | "vermelha" } {
-  const prazo = dayjs(prazoEntrega).startOf("day");
+  const prazo = dayjs(prazoEfetivoEntrega(prazoEntrega, dataAgendamento)).startOf("day");
   const entrega = dayjs(dataEntrega).startOf("day");
   const diff = prazo.diff(entrega, "day"); // positivo = antecipado, negativo = atrasado
 
