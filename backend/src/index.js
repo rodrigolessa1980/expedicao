@@ -27,8 +27,11 @@ import {
   listOrderChangesByRole,
   listOrderLogsByRole,
   listOrderAttachmentsByRole,
-  createOrderAttachment
+  createOrderAttachment,
+  markNotificacaoAtrasoEnviada
 } from "./db.js";
+import devAtrasoPedidoRoutes from "./devAtrasoPedidoRoutes.js";
+import { startAtrasoPedidoJob } from "./atrasoPedidoJob.js";
 import { sha256 } from "./security.js";
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
 import { sendEmail } from "./emailService.js";
@@ -71,9 +74,30 @@ app.use(
   })
 );
 app.use(express.json());
+app.use("/api/dev", devAtrasoPedidoRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "expedicao-backend" });
+});
+
+app.post("/api/webhooks/atraso-pedido/confirmar", async (req, res) => {
+  const secret = process.env.ATRASO_PEDIDO_WEBHOOK_SECRET || "";
+  if (!secret) {
+    return res.status(503).json({ message: "Confirmacao de atraso nao configurada no servidor." });
+  }
+  const provided = String(req.headers["x-webhook-secret"] ?? req.body?.secret ?? "");
+  if (provided !== secret) {
+    return res.status(401).json({ message: "Nao autorizado." });
+  }
+
+  const numeroPedido = String(req.body?.numeroPedido ?? "").trim();
+  if (!numeroPedido) {
+    return res.status(400).json({ message: "numeroPedido e obrigatorio." });
+  }
+
+  const ok = await markNotificacaoAtrasoEnviada(numeroPedido);
+  if (!ok) return res.status(404).json({ message: "Pedido nao encontrado." });
+  return res.json({ ok: true, numeroPedido, notificacaoAtrasoEnviada: true });
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -477,6 +501,7 @@ app.get("/api/orders/:numeroPedido/attachments/:attachmentId", requireAuth, asyn
 });
 
 await ensureDb();
+startAtrasoPedidoJob();
 app.listen(port, () => {
   console.log(`Backend rodando na porta ${port}`);
 });

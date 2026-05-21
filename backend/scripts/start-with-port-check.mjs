@@ -74,10 +74,15 @@ function startBackend() {
   const port = readEnvPort();
   killProcessesOnPort(port);
 
-  const args = process.argv.includes("--watch") ? ["--watch", "src/index.js"] : ["src/index.js"];
+  const isWatch = process.argv.includes("--watch");
+  const args = isWatch ? ["--watch", "src/index.js"] : ["src/index.js"];
   const child = spawn("node", args, {
     stdio: "inherit",
-    shell: false
+    shell: false,
+    env: {
+      ...process.env,
+      NODE_ENV: process.env.NODE_ENV || (isWatch ? "development" : "production"),
+    },
   });
 
   child.on("exit", (code) => process.exit(code ?? 0));

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Pedido } from "../types";
 import { PedidosTable } from "../components/PedidosTable";
+import { AtrasoPedidosDevModal } from "../components/AtrasoPedidosDevModal";
 import { PedidoFormDialog } from "../components/PedidoFormDialog";
 import { DashboardSkeleton } from "../components/DashboardSkeleton";
 import { Card } from "../components/ui/card";
@@ -25,6 +26,7 @@ export function DashboardPage({ pedidos, canManage, canCreate }: DashboardPagePr
 
   return (
     <section className="space-y-4">
+      <AtrasoPedidosDevModal pedidos={pedidos} canManage={canManage} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-slate-900">Painel de pedidos</h2>

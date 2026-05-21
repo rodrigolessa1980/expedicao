@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import mysql from "mysql2/promise";
+import { getAtrasoPedidoDiasAtraso } from "./atrasoPedidoConfig.js";
 import { sha256, slugify } from "./security.js";
 
 const defaultStatus = [
@@ -50,19 +51,33 @@ function mapUser(row) {
   };
 }
 
+function formatDateField(value) {
+  if (value == null || value === "") return "";
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(value.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const raw = String(value).trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : raw;
+}
+
 function mapPedido(row) {
   return {
     numeroPedido: row.numero_pedido,
     representante: row.representante || "",
     numeroNF: row.numero_nf,
     cliente: row.cliente,
-    dataPedido: row.data_pedido || row.data_faturamento,
-    dataFaturamento: row.data_faturamento,
-    dataExpedicao: row.data_expedicao,
-    prazoEntrega: row.prazo_entrega,
-    dataAgendamento: row.data_agendamento || "",
-    dataEntrega: row.data_entrega || "",
+    dataPedido: formatDateField(row.data_pedido || row.data_faturamento),
+    dataFaturamento: formatDateField(row.data_faturamento),
+    dataExpedicao: formatDateField(row.data_expedicao),
+    prazoEntrega: formatDateField(row.prazo_entrega),
+    dataAgendamento: formatDateField(row.data_agendamento),
+    dataEntrega: formatDateField(row.data_entrega),
     statusAtual: row.status_atual,
+    notificacaoAtrasoEnviada: Boolean(row.notificacao_atraso_enviada),
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null
   };
@@ -180,6 +195,7 @@ export async function ensureDb() {
   await ensureColumn("pedidos", "created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
   await ensureColumn("pedidos", "data_pedido DATE NULL");
   await ensureColumn("pedidos", "data_agendamento DATE NULL");
+  await ensureColumn("pedidos", "notificacao_atraso_enviada TINYINT(1) NOT NULL DEFAULT 0");
   await conn.query("UPDATE pedidos SET data_pedido = data_faturamento WHERE data_pedido IS NULL");
   await conn.query("ALTER TABLE pedidos MODIFY COLUMN representante VARCHAR(120) NULL");
   await conn.query(`
@@ -622,6 +638,101 @@ export async function listOrderAttachmentsByRole(user, numeroPedido) {
     [numeroPedido]
   );
   return rows.map(mapPedidoAttachment);
+}
+
+export async function getOrderWithStatusByNumero(numeroPedido) {
+  const conn = getPool();
+  const [rows] = await conn.query(
+    `
+      SELECT p.*, s.nome AS status_nome, s.cor AS status_cor
+      FROM pedidos p
+      INNER JOIN status s ON s.id = p.status_atual
+      WHERE p.numero_pedido = ?
+      LIMIT 1
+    `,
+    [numeroPedido]
+  );
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  return {
+    pedido: mapPedido(row),
+    statusNome: row.status_nome,
+    statusCor: row.status_cor,
+  };
+}
+
+export async function resetNotificacaoAtraso(numeroPedido) {
+  const conn = getPool();
+  const [result] = await conn.query(
+    "UPDATE pedidos SET notificacao_atraso_enviada = 0, updated_at = ? WHERE numero_pedido = ?",
+    [new Date(), numeroPedido]
+  );
+  return result.affectedRows > 0;
+}
+
+export async function listPedidosAtrasoPendentesNotificacao() {
+  const minDiasAtraso = getAtrasoPedidoDiasAtraso();
+  const conn = getPool();
+  const [rows] = await conn.query(
+    `
+      SELECT
+        p.*,
+        s.nome AS status_nome,
+        s.cor AS status_cor
+      FROM pedidos p
+      INNER JOIN status s ON s.id = p.status_atual
+      WHERE p.notificacao_atraso_enviada = 0
+        AND p.status_atual <> 'finalizado'
+        AND (p.data_entrega IS NULL OR TRIM(COALESCE(CAST(p.data_entrega AS CHAR), '')) = '')
+        AND (
+          CASE
+            WHEN p.data_agendamento IS NOT NULL
+              AND TRIM(COALESCE(CAST(p.data_agendamento AS CHAR), '')) <> ''
+              AND CAST(p.data_agendamento AS CHAR) NOT IN ('0000-00-00', '0000-00-00 00:00:00')
+            THEN p.data_agendamento
+            WHEN p.prazo_entrega IS NOT NULL
+              AND TRIM(COALESCE(CAST(p.prazo_entrega AS CHAR), '')) <> ''
+              AND CAST(p.prazo_entrega AS CHAR) NOT IN ('0000-00-00', '0000-00-00 00:00:00')
+            THEN p.prazo_entrega
+            ELSE NULL
+          END
+        ) IS NOT NULL
+        AND DATEDIFF(
+          CURDATE(),
+          CASE
+            WHEN p.data_agendamento IS NOT NULL
+              AND TRIM(COALESCE(CAST(p.data_agendamento AS CHAR), '')) <> ''
+              AND CAST(p.data_agendamento AS CHAR) NOT IN ('0000-00-00', '0000-00-00 00:00:00')
+            THEN p.data_agendamento
+            ELSE p.prazo_entrega
+          END
+        ) >= ?
+      ORDER BY
+        CASE
+          WHEN p.data_agendamento IS NOT NULL
+            AND TRIM(COALESCE(CAST(p.data_agendamento AS CHAR), '')) <> ''
+            AND CAST(p.data_agendamento AS CHAR) NOT IN ('0000-00-00', '0000-00-00 00:00:00')
+          THEN p.data_agendamento
+          ELSE p.prazo_entrega
+        END ASC,
+        p.numero_pedido ASC
+    `,
+    [minDiasAtraso]
+  );
+  return rows.map((row) => ({
+    pedido: mapPedido(row),
+    statusNome: row.status_nome,
+    statusCor: row.status_cor
+  }));
+}
+
+export async function markNotificacaoAtrasoEnviada(numeroPedido) {
+  const conn = getPool();
+  const [result] = await conn.query(
+    "UPDATE pedidos SET notificacao_atraso_enviada = 1, updated_at = ? WHERE numero_pedido = ?",
+    [new Date(), numeroPedido]
+  );
+  return result.affectedRows > 0;
 }
 
 export async function createOrderAttachment({ pedidoNumero, nomeOriginal, nomeStorage, caminhoStorage, mimeType, tamanhoBytes, criadoPor }) {

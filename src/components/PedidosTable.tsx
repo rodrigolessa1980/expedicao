@@ -22,6 +22,18 @@ type PedidosTableProps = {
   onPedidoClick?: (pedido: Pedido) => void;
 };
 type PeriodoRapido = "todos" | "7d" | "30d" | "90d" | "mes";
+type AbaPedidos = "todos" | "ativos" | "atrasados" | "concluidos";
+
+/** 10 colunas de dados + espaço flexível + status ancorado à direita */
+const GRID_COLUNAS_PEDIDOS =
+  "grid-cols-[64px_minmax(88px,1.2fr)_56px_minmax(100px,1.4fr)_minmax(96px,max-content)_minmax(96px,max-content)_minmax(96px,max-content)_72px_minmax(96px,max-content)_minmax(108px,max-content)_1fr_minmax(130px,max-content)]";
+const COL_STATUS_DIREITA = "col-start-12 justify-self-end";
+
+function pedidoEmAtraso(pedido: Pedido, status: { id: string; nome: string }[]): boolean {
+  const statusItem = status.find((s) => s.id === pedido.statusAtual);
+  const concluido = statusItem?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
+  return !concluido && isAtrasado(pedido.prazoEntrega, pedido.dataAgendamento);
+}
 
 export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTableProps) {
   const status = useExportStore((state) => state.status);
@@ -33,8 +45,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroRepresentante, setFiltroRepresentante] = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState("todos");
-  const [apenasAtrasados, setApenasAtrasados] = useState("todos");
-  const [abaAtiva, setAbaAtiva] = useState<"todos" | "ativos" | "concluidos">("todos");
+  const [abaAtiva, setAbaAtiva] = useState<AbaPedidos>("todos");
 
   const representantes = useMemo(
     () =>
@@ -79,11 +90,9 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         const matchCliente = pedido.cliente.toLowerCase().includes(filtroCliente.toLowerCase());
         const matchRepresentante = filtroRepresentante === "todos" || pedido.representante === filtroRepresentante;
         const matchStatus = filtroStatus === "todos" || pedido.statusAtual === filtroStatus;
-        const matchAtrasado =
-          apenasAtrasados === "todos" || (apenasAtrasados === "sim" && isAtrasado(pedido.prazoEntrega, pedido.dataAgendamento));
-        return matchCliente && matchRepresentante && matchStatus && matchAtrasado;
+        return matchCliente && matchRepresentante && matchStatus;
       }),
-    [dadosComFiltroPeriodo, filtroCliente, filtroRepresentante, filtroStatus, apenasAtrasados],
+    [dadosComFiltroPeriodo, filtroCliente, filtroRepresentante, filtroStatus],
   );
 
   const counts = useMemo(() => {
@@ -91,8 +100,9 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
       const s = status.find((i) => i.id === p.statusAtual);
       return !(s?.nome.toLowerCase().includes("finalizado") || !!p.dataEntrega);
     }).length;
+    const atrasados = filtradosBase.filter((p) => pedidoEmAtraso(p, status)).length;
     const concluidos = filtradosBase.length - ativos;
-    return { todos: filtradosBase.length, ativos, concluidos };
+    return { todos: filtradosBase.length, ativos, atrasados, concluidos };
   }, [filtradosBase, status]);
 
   const filtrados = useMemo(
@@ -101,9 +111,9 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         const statusItem = status.find((s) => s.id === pedido.statusAtual);
         const isConcluido = statusItem?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
         
-        // Filtro de aba
         if (abaAtiva === "ativos" && isConcluido) return false;
         if (abaAtiva === "concluidos" && !isConcluido) return false;
+        if (abaAtiva === "atrasados" && !pedidoEmAtraso(pedido, status)) return false;
         return true;
       }),
     [filtradosBase, abaAtiva, status],
@@ -257,7 +267,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-4 md:gap-2 md:rounded-xl md:p-3">
+      <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-3 md:gap-2 md:rounded-xl md:p-3">
         <Input
           value={filtroCliente}
           onChange={(e) => setFiltroCliente(e.target.value)}
@@ -290,22 +300,13 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
             ))}
           </SelectContent>
         </Select>
-        <Select value={apenasAtrasados} onValueChange={setApenasAtrasados}>
-          <SelectTrigger className="col-span-2 h-8 text-[11px] md:col-span-1 md:h-10 md:text-sm">
-            <SelectValue placeholder="Atraso" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os pedidos</SelectItem>
-            <SelectItem value="sim">Somente atrasados</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-slate-200 pb-1">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-1">
         <button
           type="button"
           onClick={() => setAbaAtiva("todos")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+          className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
             abaAtiva === "todos"
               ? "border-b-2 border-blue-600 text-blue-600"
               : "text-slate-500 hover:text-slate-700"
@@ -319,7 +320,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         <button
           type="button"
           onClick={() => setAbaAtiva("ativos")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+          className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
             abaAtiva === "ativos"
               ? "border-b-2 border-blue-600 text-blue-600"
               : "text-slate-500 hover:text-slate-700"
@@ -332,8 +333,26 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         </button>
         <button
           type="button"
+          onClick={() => setAbaAtiva("atrasados")}
+          className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+            abaAtiva === "atrasados"
+              ? "border-b-2 border-red-600 text-red-600"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Atrasados
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+              abaAtiva === "atrasados" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {counts.atrasados}
+          </span>
+        </button>
+        <button
+          type="button"
           onClick={() => setAbaAtiva("concluidos")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+          className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
             abaAtiva === "concluidos"
               ? "border-b-2 border-blue-600 text-blue-600"
               : "text-slate-500 hover:text-slate-700"
@@ -438,12 +457,16 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         })}
       </div>
 
-      <div className="hidden lg:block">
-        <div className="mb-4 grid grid-cols-[70px_2fr_80px_1.5fr_100px_100px_100px_90px_100px_160px] gap-4 px-6 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          {table.getHeaderGroups()[0].headers.map((header) => (
+      <div className="hidden lg:block w-full">
+        <div
+          className={`mb-4 grid w-full ${GRID_COLUNAS_PEDIDOS} gap-x-3 gap-y-0 px-5 text-[11px] font-bold uppercase tracking-wide text-slate-500`}
+        >
+          {table.getHeaderGroups()[0].headers.map((header, index, headers) => (
             <div
               key={header.id}
-              className="cursor-pointer hover:text-slate-800"
+              className={`cursor-pointer whitespace-nowrap hover:text-slate-800 ${
+                index === headers.length - 1 ? COL_STATUS_DIREITA : ""
+              }`}
               onClick={header.column.getToggleSortingHandler()}
             >
               {flexRender(header.column.columnDef.header, header.getContext())}
@@ -451,7 +474,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           ))}
         </div>
 
-        <div className="space-y-4">
+        <div className="w-full space-y-4">
           {table.getRowModel().rows.map((row) => {
             const statusAtual = status.find((s) => s.id === row.original.statusAtual);
             const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!row.original.dataEntrega;
@@ -572,9 +595,14 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                   )}
                 </div>
 
-                <div className="grid grid-cols-[70px_2fr_80px_1.5fr_100px_100px_100px_90px_100px_160px] items-start gap-4 px-5 py-4 text-sm text-slate-700">
-                  {row.getVisibleCells().map((cell) => (
-                    <div key={cell.id} className="min-w-0 break-words">
+                <div
+                  className={`grid w-full ${GRID_COLUNAS_PEDIDOS} items-start gap-x-3 gap-y-0 px-5 py-4 text-sm text-slate-700`}
+                >
+                  {row.getVisibleCells().map((cell, index, cells) => (
+                    <div
+                      key={cell.id}
+                      className={`min-w-0 ${index === cells.length - 1 ? `${COL_STATUS_DIREITA} max-w-[180px]` : "truncate"}`}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </div>
                   ))}

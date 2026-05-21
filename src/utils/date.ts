@@ -12,14 +12,27 @@ export function diasParaPrazo(prazoEntrega: string, dataAgendamento?: string): n
   return dayjs(prazo).startOf("day").diff(dayjs().startOf("day"), "day");
 }
 
+/** Dias excedentes do prazo efetivo (agendamento ou prazo de entrega). */
+export function diasEmAtraso(prazoEntrega: string, dataAgendamento?: string): number {
+  const dias = diasParaPrazo(prazoEntrega, dataAgendamento);
+  return dias < 0 ? Math.abs(dias) : 0;
+}
+
+/** Alinhado ao trigger do backend (ATRASO_PEDIDO_DIAS_ATRASO, padrao 1). */
+export const DIAS_ATRASO_MINIMOS = 1;
+
 export function labelPrazo(prazoEntrega: string, dataAgendamento?: string): string {
   const dias = diasParaPrazo(prazoEntrega, dataAgendamento);
   if (dias < 0) return "ATRASADO";
   return `D-${dias}`;
 }
 
-export function isAtrasado(prazoEntrega: string, dataAgendamento?: string): boolean {
-  return diasParaPrazo(prazoEntrega, dataAgendamento) < 0;
+export function isAtrasado(
+  prazoEntrega: string,
+  dataAgendamento?: string,
+  minDiasAtraso: number = DIAS_ATRASO_MINIMOS,
+): boolean {
+  return diasEmAtraso(prazoEntrega, dataAgendamento) >= minDiasAtraso;
 }
 
 export function isPrazoProximo(prazoEntrega: string, dataAgendamento?: string): boolean {

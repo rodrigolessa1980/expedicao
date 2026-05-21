@@ -16,6 +16,7 @@ export type Pedido = {
   dataAgendamento: string;
   dataEntrega: string;
   statusAtual: string;
+  notificacaoAtrasoEnviada?: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
