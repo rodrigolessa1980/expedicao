@@ -49,6 +49,7 @@ model Pedido {
   representante   String?   @db.VarChar(120)
   numeroNf        String    @map("numero_nf") @db.VarChar(60)
   cliente         String    @db.VarChar(160)
+  regiao          String?   @db.VarChar(30)
   dataPedido      DateTime  @map("data_pedido") @db.Date
   dataFaturamento DateTime  @map("data_faturamento") @db.Date
   dataExpedicao   DateTime  @map("data_expedicao") @db.Date

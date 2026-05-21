@@ -8,12 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { useExportStore } from "../store/useExportStore";
 import { useAuthStore } from "../store/useAuthStore";
 import type { Pedido, PedidoChangeLog, PedidoField } from "../types";
+import { isRegiaoBrasil, pedidoSemRegiao, REGIOES_BRASIL } from "../constants/regioes";
 
 const initialValues = {
   numeroPedido: "",
   representante: "",
   numeroNF: "",
   cliente: "",
+  regiao: "",
   dataPedido: "",
   dataFaturamento: "",
   dataExpedicao: "",
@@ -28,6 +30,7 @@ const FIELD_LABELS: Record<PedidoField, string> = {
   representante: "Representante (opcional)",
   numeroNF: "Numero NF",
   cliente: "Cliente",
+  regiao: "Regiao",
   dataPedido: "Data do pedido",
   dataFaturamento: "Data Faturamento",
   dataExpedicao: "Data Expedicao",
@@ -110,6 +113,7 @@ export function PedidoFormDialog({
   const dataCriacaoLog = initialPedido?.createdAt || (logsDoPedido.length > 0 ? logsDoPedido[0].changedAt : undefined);
   const dataUltimaEdicao =
     initialPedido?.updatedAt || (logsDoPedido.length > 0 ? logsDoPedido[logsDoPedido.length - 1].changedAt : undefined);
+  const regiaoPendente = mode === "edit" && pedidoSemRegiao(initialPedido?.regiao);
 
   const renderFieldLabel = (field: PedidoField) => {
     if (mode !== "edit") {
@@ -139,6 +143,7 @@ export function PedidoFormDialog({
         representante: initialPedido.representante,
         numeroNF: initialPedido.numeroNF,
         cliente: initialPedido.cliente,
+        regiao: initialPedido.regiao,
         dataPedido: initialPedido.dataPedido,
         dataFaturamento: initialPedido.dataFaturamento,
         dataExpedicao: initialPedido.dataExpedicao,
@@ -184,7 +189,7 @@ export function PedidoFormDialog({
       setErro("Pedido invalido para edicao.");
       return;
     }
-    if (isRepresentante && mode === "create") {
+    if (mode === "create") {
       if (!form.numeroPedido.trim()) {
         setErro("O campo Numero do Pedido e obrigatorio.");
         return;
@@ -193,6 +198,12 @@ export function PedidoFormDialog({
         setErro("O campo Cliente e obrigatorio.");
         return;
       }
+      if (!form.regiao) {
+        setErro("O campo Regiao e obrigatorio.");
+        return;
+      }
+    }
+    if (isRepresentante && mode === "create") {
       if (!form.dataPedido) {
         setErro("O campo Data do pedido e obrigatorio.");
         return;
@@ -203,14 +214,6 @@ export function PedidoFormDialog({
       }
     }
     if (!isRepresentante && mode === "create") {
-      if (!form.numeroPedido.trim()) {
-        setErro("O campo Numero do Pedido e obrigatorio.");
-        return;
-      }
-      if (!form.cliente.trim()) {
-        setErro("O campo Cliente e obrigatorio.");
-        return;
-      }
       if (!form.prazoEntrega) {
         setErro("O campo Prazo de Entrega e obrigatorio.");
         return;
@@ -219,6 +222,10 @@ export function PedidoFormDialog({
         setErro("O campo Status inicial e obrigatorio.");
         return;
       }
+    }
+    if (mode === "edit" && form.regiao.trim() && !isRegiaoBrasil(form.regiao)) {
+      setErro("Regiao invalida. Selecione uma macrorregiao do Brasil.");
+      return;
     }
     setSalvando(true);
     const result = mode === "edit" ? await updatePedido(numeroPedidoOriginal, form) : await addPedido(form);
@@ -317,6 +324,36 @@ export function PedidoFormDialog({
               renderFieldLabel("cliente")
             )}
             <Input value={form.cliente} onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            {mode === "create" ? (
+              <Label>
+                Regiao <span className="text-red-500">*</span>
+              </Label>
+            ) : regiaoPendente ? (
+              <Label>
+                Regiao <span className="font-normal text-amber-600">(pendente — selecione para salvar no pedido)</span>
+              </Label>
+            ) : (
+              renderFieldLabel("regiao")
+            )}
+            <Select value={form.regiao || undefined} onValueChange={(value) => setForm((f) => ({ ...f, regiao: value }))}>
+              <SelectTrigger className={regiaoPendente ? "border-amber-300 bg-amber-50/50 ring-1 ring-amber-200" : undefined}>
+                <SelectValue placeholder={regiaoPendente ? "Definir regiao manualmente" : "Selecione a regiao"} />
+              </SelectTrigger>
+              <SelectContent>
+                {REGIOES_BRASIL.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {regiaoPendente ? (
+              <p className="text-xs text-amber-700">
+                Pedidos antigos podem ficar sem regiao ate voce definir aqui. Os demais campos podem ser salvos normalmente.
+              </p>
+            ) : null}
           </div>
           <div className="space-y-1">
             {mode === "create" && isRepresentante ? (

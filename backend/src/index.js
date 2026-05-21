@@ -33,6 +33,7 @@ import {
 import devAtrasoPedidoRoutes from "./devAtrasoPedidoRoutes.js";
 import { startAtrasoPedidoJob } from "./atrasoPedidoJob.js";
 import { sha256 } from "./security.js";
+import { isRegiaoBrasil } from "./regioes.js";
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
 import { sendEmail } from "./emailService.js";
 import { confirmationEmailTemplate, forgotPasswordEmailTemplate } from "./emailTemplates.js";
@@ -339,11 +340,16 @@ app.post("/api/orders", requireAuth, async (req, res) => {
     return res.status(403).json({ message: "Sem permissao para criar pedidos." });
   }
   const required = isRepresentante
-    ? ["numeroPedido", "cliente", "dataPedido"]
-    : ["numeroPedido", "cliente", "prazoEntrega", "statusAtual"];
+    ? ["numeroPedido", "cliente", "regiao", "dataPedido"]
+    : ["numeroPedido", "cliente", "regiao", "prazoEntrega", "statusAtual"];
 
   const missing = required.find((key) => !String(payload[key] ?? "").trim());
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
+
+  const regiao = String(payload.regiao ?? "").trim();
+  if (!isRegiaoBrasil(regiao)) {
+    return res.status(400).json({ message: "Regiao invalida. Selecione uma macrorregiao do Brasil." });
+  }
 
   const hoje = new Date().toISOString().slice(0, 10);
   const payloadNormalizado = isRepresentante
@@ -351,6 +357,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
         numeroPedido: String(payload.numeroPedido).trim(),
         numeroNF: String(payload.numeroNF ?? "").trim(),
         cliente: String(payload.cliente).trim(),
+        regiao,
         representante: req.user?.nome || "",
         dataPedido: String(payload.dataPedido ?? "").trim() || hoje,
         dataFaturamento: hoje,
@@ -360,6 +367,7 @@ app.post("/api/orders", requireAuth, async (req, res) => {
       }
     : {
         ...payload,
+        regiao,
         numeroNF: String(payload.numeroNF ?? "").trim(),
         dataPedido: String(payload.dataPedido ?? "").trim() || String(payload.dataFaturamento ?? "").trim() || hoje,
         dataFaturamento:
@@ -392,6 +400,11 @@ app.put("/api/orders/:numeroPedido", requireAuth, requireAdmin, async (req, res)
   const required = ["numeroPedido", "numeroNF", "cliente", "statusAtual"];
   const missing = required.find((key) => !payload[key]);
   if (missing) return res.status(400).json({ message: `Campo obrigatorio: ${missing}` });
+
+  const regiaoInformada = String(payload.regiao ?? "").trim();
+  if (regiaoInformada && !isRegiaoBrasil(regiaoInformada)) {
+    return res.status(400).json({ message: "Regiao invalida. Selecione uma macrorregiao do Brasil." });
+  }
 
   try {
     const atualizado = await updateOrder(req.params.numeroPedido, payload, req.user?.nome || "Sistema");

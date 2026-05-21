@@ -24,10 +24,21 @@ type PedidosTableProps = {
 type PeriodoRapido = "todos" | "7d" | "30d" | "90d" | "mes";
 type AbaPedidos = "todos" | "ativos" | "atrasados" | "concluidos";
 
-/** 10 colunas de dados + espaço flexível + status ancorado à direita */
+/** 12 colunas alinhadas (pedido mais largo + 6 datas + status) */
 const GRID_COLUNAS_PEDIDOS =
-  "grid-cols-[64px_minmax(88px,1.2fr)_56px_minmax(100px,1.4fr)_minmax(96px,max-content)_minmax(96px,max-content)_minmax(96px,max-content)_72px_minmax(96px,max-content)_minmax(108px,max-content)_1fr_minmax(130px,max-content)]";
-const COL_STATUS_DIREITA = "col-start-12 justify-self-end";
+  "grid-cols-[minmax(120px,1.5fr)_minmax(100px,1.1fr)_minmax(56px,0.6fr)_minmax(120px,1.2fr)_minmax(88px,0.85fr)_repeat(6,minmax(104px,1fr))_minmax(150px,max-content)]";
+const COLUNAS_ALINHADAS_ESQUERDA = new Set(["representante", "cliente"]);
+const ROTULO_COLUNA_CENTRO =
+  "w-full shrink-0 cursor-pointer text-center text-[9px] font-bold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-800";
+const ROTULO_COLUNA_ESQUERDA =
+  "w-full shrink-0 cursor-pointer text-left text-[9px] font-bold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-800";
+const CELULA_COLUNA =
+  "flex min-w-0 flex-col items-center justify-center gap-1.5 border-r-2 border-slate-200 px-3 py-3 text-center";
+const CELULA_COLUNA_ESQUERDA =
+  "flex min-w-0 flex-col items-start justify-center gap-1.5 border-r-2 border-slate-200 px-3 py-3 text-left";
+const CELULA_COLUNA_STATUS = `${CELULA_COLUNA} max-w-[200px] border-r-0`;
+const VALOR_COLUNA_CENTRO = "flex w-full min-w-0 items-center justify-center truncate text-xs leading-snug";
+const VALOR_COLUNA_ESQUERDA = "flex w-full min-w-0 items-center justify-start truncate text-xs leading-snug";
 
 function pedidoEmAtraso(pedido: Pedido, status: { id: string; nome: string }[]): boolean {
   const statusItem = status.find((s) => s.id === pedido.statusAtual);
@@ -45,7 +56,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroRepresentante, setFiltroRepresentante] = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState("todos");
-  const [abaAtiva, setAbaAtiva] = useState<AbaPedidos>("todos");
+  const [abaAtiva, setAbaAtiva] = useState<AbaPedidos>("ativos");
 
   const representantes = useMemo(
     () =>
@@ -126,6 +137,16 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
       { accessorKey: "numeroNF", header: "NF" },
       { accessorKey: "cliente", header: "Cliente" },
       {
+        accessorKey: "regiao",
+        header: "Regiao",
+        cell: ({ row }) =>
+          row.original.regiao ? (
+            <span>{row.original.regiao}</span>
+          ) : (
+            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Sem regiao</span>
+          ),
+      },
+      {
         accessorKey: "dataPedido",
         header: "Data do Pedido",
         cell: ({ row }) => formatarData(row.original.dataPedido),
@@ -193,7 +214,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           if (!canManage) {
             return (
               <span
-                className="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-semibold text-white"
+                className="inline-flex h-8 items-center justify-center rounded-lg px-2.5 text-center text-xs font-semibold text-white"
                 style={{ backgroundColor: statusAtual?.cor ?? "#64748b" }}
               >
                 {statusAtual?.nome ?? "Sem status"}
@@ -210,7 +231,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
             >
               <SelectTrigger
                 onClick={(event) => event.stopPropagation()}
-                className="h-8 w-full min-w-0 max-w-[180px] border-transparent px-2.5 text-xs font-semibold text-white"
+                className="mx-auto h-8 w-full min-w-0 max-w-[180px] border-transparent px-2.5 text-center text-xs font-semibold text-white"
                 style={{ backgroundColor: statusAtual?.cor ?? "#64748b" }}
               >
                 <SelectValue placeholder="Atualizar status" />
@@ -305,20 +326,6 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
       <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-1">
         <button
           type="button"
-          onClick={() => setAbaAtiva("todos")}
-          className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
-            abaAtiva === "todos"
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Todos
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${abaAtiva === "todos" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
-            {counts.todos}
-          </span>
-        </button>
-        <button
-          type="button"
           onClick={() => setAbaAtiva("ativos")}
           className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
             abaAtiva === "ativos"
@@ -326,7 +333,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
               : "text-slate-500 hover:text-slate-700"
           }`}
         >
-          Em Aberto
+          Abertos
           <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${abaAtiva === "ativos" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
             {counts.ativos}
           </span>
@@ -363,6 +370,20 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
             {counts.concluidos}
           </span>
         </button>
+        <button
+          type="button"
+          onClick={() => setAbaAtiva("todos")}
+          className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-semibold transition-all ${
+            abaAtiva === "todos"
+              ? "border-b-2 border-blue-600 text-blue-600"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Todos
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${abaAtiva === "todos" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+            {counts.todos}
+          </span>
+        </button>
       </div>
 
       <div className="space-y-2 lg:hidden">
@@ -373,12 +394,14 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega, pedido.dataAgendamento);
           
           return (
-            <div key={pedido.numeroPedido} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div key={pedido.numeroPedido} className="space-y-2 rounded-xl border-2 border-slate-300 bg-white p-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-slate-500">Pedido {pedido.numeroPedido}</p>
                   <p className="truncate text-sm font-semibold text-slate-900">{pedido.cliente}</p>
-                  <p className="text-xs text-slate-500">{pedido.representante}</p>
+                  <p className="text-xs text-slate-500">
+                    {pedido.regiao || "Sem regiao"} | {pedido.representante}
+                  </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
                   NF {pedido.numeroNF}
@@ -458,23 +481,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
       </div>
 
       <div className="hidden lg:block w-full">
-        <div
-          className={`mb-4 grid w-full ${GRID_COLUNAS_PEDIDOS} gap-x-3 gap-y-0 px-5 text-[11px] font-bold uppercase tracking-wide text-slate-500`}
-        >
-          {table.getHeaderGroups()[0].headers.map((header, index, headers) => (
-            <div
-              key={header.id}
-              className={`cursor-pointer whitespace-nowrap hover:text-slate-800 ${
-                index === headers.length - 1 ? COL_STATUS_DIREITA : ""
-              }`}
-              onClick={header.column.getToggleSortingHandler()}
-            >
-              {flexRender(header.column.columnDef.header, header.getContext())}
-            </div>
-          ))}
-        </div>
-
-        <div className="w-full space-y-4">
+        <div className="w-full space-y-5">
           {table.getRowModel().rows.map((row) => {
             const statusAtual = status.find((s) => s.id === row.original.statusAtual);
             const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!row.original.dataEntrega;
@@ -491,11 +498,11 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                 onClick={() => {
                   if (canManage && onPedidoClick) onPedidoClick(row.original);
                 }}
-                className={`group rounded-2xl border border-slate-200 bg-white p-1 shadow-sm transition-all hover:border-blue-200 hover:shadow-md ${
+                className={`group rounded-2xl border-2 border-slate-300 bg-white shadow-sm transition-all hover:border-blue-400 hover:shadow-md ${
                   canManage && onPedidoClick ? "cursor-pointer" : ""
                 } ${atrasado ? "bg-red-50/30" : proximo ? "bg-amber-50/20" : ""}`}
               >
-                <div className="relative px-5 pt-10">
+                <div className="relative px-6 pb-2 pt-11">
                   {termometro.valido ? (
                     <div className="relative h-2 w-full">
                       {/* Marcacoes de Datas Superiores */}
@@ -516,7 +523,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                                   {dataTick.format("DD/MM")}
                                 </span>
                               )}
-                              <div className="h-1.5 w-[1px] bg-slate-200" />
+                              <div className="h-2 w-0.5 bg-slate-300" />
                             </div>
                           );
                         })}
@@ -540,13 +547,13 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                         );
                       })()}
 
-                      <div className="relative h-full w-full overflow-hidden rounded-full border border-slate-100 bg-slate-50">
+                      <div className="relative h-full w-full overflow-hidden rounded-full border-2 border-slate-300 bg-slate-50">
                         {/* Marcadores de Dias */}
                         <div className="absolute inset-0 h-full w-full pointer-events-none">
                           {Array.from({ length: termometro.totalDiasEscala + 1 }).map((_, i) => (
                             <div
                               key={i}
-                              className="absolute h-full w-[1px] bg-slate-300/40"
+                              className="absolute h-full w-0.5 bg-slate-400/60"
                               style={{ left: `${(i / termometro.totalDiasEscala * 100).toFixed(2)}%` }}
                             />
                           ))}
@@ -577,7 +584,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                           />
                         ) : null}
                         <div
-                          className="absolute bottom-0 top-0 w-0.5 bg-slate-900"
+                          className="absolute bottom-0 top-0 w-1 bg-slate-900"
                           style={{
                             left:
                               termometro.prazoPercentual >= 100
@@ -596,20 +603,50 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                 </div>
 
                 <div
-                  className={`grid w-full ${GRID_COLUNAS_PEDIDOS} items-start gap-x-3 gap-y-0 px-5 py-4 text-sm text-slate-700`}
+                  className={`grid w-full ${GRID_COLUNAS_PEDIDOS} items-stretch gap-x-1 gap-y-0 overflow-hidden border-t-2 border-slate-200 bg-slate-50/30 text-xs text-slate-800`}
                 >
-                  {row.getVisibleCells().map((cell, index, cells) => (
-                    <div
-                      key={cell.id}
-                      className={`min-w-0 ${index === cells.length - 1 ? `${COL_STATUS_DIREITA} max-w-[180px]` : "truncate"}`}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </div>
-                  ))}
+                  {row.getVisibleCells().map((cell, index, cells) => {
+                    const header = table.getHeaderGroups()[0]?.headers[index];
+                    const isStatus = index === cells.length - 1;
+                    const alinharEsquerda = COLUNAS_ALINHADAS_ESQUERDA.has(cell.column.id);
+                    return (
+                      <div
+                        key={cell.id}
+                        className={
+                          isStatus ? CELULA_COLUNA_STATUS : alinharEsquerda ? CELULA_COLUNA_ESQUERDA : CELULA_COLUNA
+                        }
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {header ? (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className={alinharEsquerda ? ROTULO_COLUNA_ESQUERDA : ROTULO_COLUNA_CENTRO}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              header.column.getToggleSortingHandler()?.(event);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                header.column.getToggleSortingHandler()?.(event);
+                              }
+                            }}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
+                        ) : null}
+                        <div className={alinharEsquerda ? VALOR_COLUNA_ESQUERDA : VALOR_COLUNA_CENTRO}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {termometro.valido && (
-                  <div className="flex gap-3 px-5 pb-2 text-[9px] font-medium text-slate-400">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 px-6 py-2.5 text-[9px] font-medium text-slate-400">
                     <span className="flex items-center gap-1">
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Faturamento
                     </span>

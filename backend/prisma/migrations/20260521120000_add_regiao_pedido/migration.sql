@@ -1,0 +1,1 @@
+ALTER TABLE `pedidos` ADD COLUMN `regiao` VARCHAR(30) NULL;

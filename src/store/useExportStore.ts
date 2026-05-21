@@ -52,6 +52,7 @@ function normalizeDate(value: unknown) {
 function normalizePedido(pedido: Pedido): Pedido {
   return {
     ...pedido,
+    regiao: pedido.regiao ?? "",
     dataPedido: normalizeDate(pedido.dataPedido),
     dataFaturamento: normalizeDate(pedido.dataFaturamento),
     dataExpedicao: normalizeDate(pedido.dataExpedicao),
@@ -122,10 +123,16 @@ export const useExportStore = create<ExportState>()((set, get) => ({
     const token = getToken();
     if (!token) return { ok: false, erro: "Sessao expirada." };
     try {
+      const original = get().pedidos.find((item) => item.numeroPedido === numeroPedidoOriginal);
+      const body: PedidoInput = { ...pedido };
+      // Não envia região vazia quando o pedido já tem região salva (o backend preserva, mas evita ambiguidade).
+      if (!String(pedido.regiao ?? "").trim() && String(original?.regiao ?? "").trim()) {
+        delete (body as Partial<PedidoInput>).regiao;
+      }
       const atualizado = await apiRequest<Pedido>(`/api/orders/${numeroPedidoOriginal}`, {
         method: "PUT",
         token,
-        body: pedido,
+        body,
       });
       const atualizadoNormalizado = normalizePedido(atualizado);
       set((state) => {

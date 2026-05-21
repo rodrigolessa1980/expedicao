@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import mysql from "mysql2/promise";
 import { getAtrasoPedidoDiasAtraso } from "./atrasoPedidoConfig.js";
+import { resolveRegiaoOnUpdate } from "./regioes.js";
 import { sha256, slugify } from "./security.js";
 
 const defaultStatus = [
@@ -70,6 +71,7 @@ function mapPedido(row) {
     representante: row.representante || "",
     numeroNF: row.numero_nf,
     cliente: row.cliente,
+    regiao: row.regiao || "",
     dataPedido: formatDateField(row.data_pedido || row.data_faturamento),
     dataFaturamento: formatDateField(row.data_faturamento),
     dataExpedicao: formatDateField(row.data_expedicao),
@@ -121,6 +123,7 @@ const trackedPedidoFields = [
   { field: "representante", column: "representante", label: "Representante (opcional)" },
   { field: "numeroNF", column: "numero_nf", label: "Numero NF" },
   { field: "cliente", column: "cliente", label: "Cliente" },
+  { field: "regiao", column: "regiao", label: "Regiao" },
   { field: "dataPedido", column: "data_pedido", label: "Data do pedido" },
   { field: "dataFaturamento", column: "data_faturamento", label: "Data Faturamento" },
   { field: "dataExpedicao", column: "data_expedicao", label: "Data Expedicao" },
@@ -196,6 +199,7 @@ export async function ensureDb() {
   await ensureColumn("pedidos", "data_pedido DATE NULL");
   await ensureColumn("pedidos", "data_agendamento DATE NULL");
   await ensureColumn("pedidos", "notificacao_atraso_enviada TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("pedidos", "regiao VARCHAR(30) NULL");
   await conn.query("UPDATE pedidos SET data_pedido = data_faturamento WHERE data_pedido IS NULL");
   await conn.query("ALTER TABLE pedidos MODIFY COLUMN representante VARCHAR(120) NULL");
   await conn.query(`
@@ -405,13 +409,14 @@ export async function createOrder(payload) {
   const now = new Date();
   await conn.query(
     `INSERT INTO pedidos
-      (numero_pedido, representante, numero_nf, cliente, data_pedido, data_faturamento, data_expedicao, prazo_entrega, data_agendamento, data_entrega, status_atual, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (numero_pedido, representante, numero_nf, cliente, regiao, data_pedido, data_faturamento, data_expedicao, prazo_entrega, data_agendamento, data_entrega, status_atual, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       payload.numeroPedido,
       payload.representante || null,
       payload.numeroNF,
       payload.cliente,
+      payload.regiao,
       payload.dataPedido,
       payload.dataFaturamento,
       payload.dataExpedicao,
@@ -428,6 +433,7 @@ export async function createOrder(payload) {
     representante: payload.representante || "",
     numeroNF: payload.numeroNF,
     cliente: payload.cliente,
+    regiao: payload.regiao,
     dataPedido: payload.dataPedido,
     dataFaturamento: payload.dataFaturamento,
     dataExpedicao: payload.dataExpedicao,
@@ -455,6 +461,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
     const representante = String(payload.representante ?? "").trim() || current.representante || "";
     const numeroNF = String(payload.numeroNF ?? "").trim() || current.numero_nf;
     const cliente = String(payload.cliente ?? "").trim() || current.cliente;
+    const regiao = resolveRegiaoOnUpdate(payload, current.regiao);
     const dataPedido = String(payload.dataPedido ?? "").trim() || current.data_pedido;
     const dataFaturamento = String(payload.dataFaturamento ?? "").trim() || current.data_faturamento || dataPedido;
     const dataExpedicao = String(payload.dataExpedicao ?? "").trim() || current.data_expedicao || dataFaturamento;
@@ -473,7 +480,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
 
     await trx.query(
       `UPDATE pedidos
-        SET numero_pedido = ?, representante = ?, numero_nf = ?, cliente = ?, data_pedido = ?, data_faturamento = ?, data_expedicao = ?,
+        SET numero_pedido = ?, representante = ?, numero_nf = ?, cliente = ?, regiao = ?, data_pedido = ?, data_faturamento = ?, data_expedicao = ?,
             prazo_entrega = ?, data_agendamento = ?, data_entrega = ?, status_atual = ?, updated_at = ?
       WHERE numero_pedido = ?`,
       [
@@ -481,6 +488,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
         representante || null,
         numeroNF,
         cliente,
+        regiao || null,
         dataPedido,
         dataFaturamento,
         dataExpedicao,
@@ -498,6 +506,7 @@ export async function updateOrder(numeroPedidoOriginal, payload, changedBy) {
       representante,
       numeroNF,
       cliente,
+      regiao,
       dataPedido,
       dataFaturamento,
       dataExpedicao,
@@ -555,6 +564,7 @@ export async function updateOrderStatus(numeroPedido, statusId) {
     representante: current.representante || "",
     numeroNF: current.numero_nf,
     cliente: current.cliente,
+    regiao: current.regiao || "",
     dataPedido: current.data_pedido || current.data_faturamento,
     dataFaturamento: current.data_faturamento,
     dataExpedicao: current.data_expedicao,
@@ -577,6 +587,7 @@ export async function listOrderChangesByRole(user, { since, limit = 500 }) {
         representante,
         numero_nf,
         cliente,
+        regiao,
         data_pedido,
         data_faturamento,
         data_expedicao,
