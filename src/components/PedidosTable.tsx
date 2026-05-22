@@ -12,6 +12,12 @@ import { motion } from "framer-motion";
 import type { Pedido } from "../types";
 import { diasParaPrazo, formatarData, infoFinalizado, isAtrasado, isPrazoProximo } from "../utils/date";
 import { calcularCronogramaPedido } from "../utils/cronogramaPedido";
+import {
+  calcularPrazoInterno,
+  dataPrazoInterno,
+  diasPrazoInternoPorRegiao,
+  MSG_SELECIONE_REGIAO_PRAZO,
+} from "../utils/prazoInterno";
 import { useExportStore } from "../store/useExportStore";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -24,14 +30,19 @@ type PedidosTableProps = {
 type PeriodoRapido = "todos" | "7d" | "30d" | "90d" | "mes";
 type AbaPedidos = "todos" | "ativos" | "atrasados" | "concluidos";
 
-/** 12 colunas alinhadas (pedido mais largo + 6 datas + status) */
-const GRID_COLUNAS_PEDIDOS =
-  "grid-cols-[minmax(120px,1.5fr)_minmax(100px,1.1fr)_minmax(56px,0.6fr)_minmax(120px,1.2fr)_minmax(88px,0.85fr)_repeat(6,minmax(104px,1fr))_minmax(150px,max-content)]";
+/** Template do grid (inline — Tailwind não aceita grid-cols arbitrário montado em runtime). */
+const GRID_TEMPLATE_COLUNAS =
+  "minmax(120px,1.5fr) minmax(100px,1.1fr) minmax(56px,0.6fr) minmax(120px,1.2fr) minmax(88px,0.85fr) repeat(3,minmax(104px,1fr)) minmax(96px,0.9fr) repeat(3,minmax(104px,1fr)) minmax(150px,max-content)";
 const COLUNAS_ALINHADAS_ESQUERDA = new Set(["representante", "cliente"]);
 const ROTULO_COLUNA_CENTRO =
-  "w-full shrink-0 cursor-pointer text-center text-[9px] font-bold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-800";
+  "w-full shrink-0 cursor-pointer select-none text-center text-[9px] font-bold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-800";
 const ROTULO_COLUNA_ESQUERDA =
-  "w-full shrink-0 cursor-pointer text-left text-[9px] font-bold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-800";
+  "w-full shrink-0 cursor-pointer select-none text-left text-[9px] font-bold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-800";
+const CABECALHO_COLUNA =
+  "flex min-h-[36px] min-w-0 flex-col items-center justify-center border-r-2 border-slate-200 px-3 py-2";
+const CABECALHO_COLUNA_ESQUERDA =
+  "flex min-h-[36px] min-w-0 flex-col items-start justify-center border-r-2 border-slate-200 px-3 py-2";
+const CABECALHO_COLUNA_STATUS = `${CABECALHO_COLUNA} max-w-[200px] border-r-0`;
 const CELULA_COLUNA =
   "flex min-w-0 flex-col items-center justify-center gap-1.5 border-r-2 border-slate-200 px-3 py-3 text-center";
 const CELULA_COLUNA_ESQUERDA =
@@ -46,7 +57,65 @@ function pedidoEmAtraso(pedido: Pedido, status: { id: string; nome: string }[]):
   return !concluido && isAtrasado(pedido.prazoEntrega, pedido.dataAgendamento);
 }
 
+function posicaoPercentualEscala(percentual: number) {
+  return percentual >= 100 ? "calc(100% - 1px)" : `${percentual.toFixed(2)}%`;
+}
+
+function MarcadorPrazoInternoTermometro({
+  prazoInterno,
+}: {
+  prazoInterno: NonNullable<ReturnType<typeof calcularPrazoInterno>>;
+}) {
+  const left = posicaoPercentualEscala(prazoInterno.percentualNaEscala);
+  const titulo = prazoInterno.estimativaSemRegiao
+    ? MSG_SELECIONE_REGIAO_PRAZO
+    : `Prazo interno (${prazoInterno.diasCorridos} dias): ${formatarData(prazoInterno.dataPrazo)}`;
+
+  const pct = prazoInterno.percentualNaEscala;
+
+  return (
+    <>
+      <div
+        className="pointer-events-none absolute inset-y-0 z-[6] bg-slate-500/35"
+        style={pct >= 100 ? { left: 0, right: 0 } : { left, right: 0 }}
+        title="Período após o prazo interno"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute -top-0.5 bottom-0 z-[18] w-3 -translate-x-1/2 rounded-sm border border-slate-900/80 bg-slate-900/45 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.25)]"
+        style={{ left }}
+        title={titulo}
+        aria-hidden
+      />
+    </>
+  );
+}
+
+function ConteudoPrazoInterno({ regiao, dataPedido }: { regiao: string; dataPedido: string }) {
+  const prazo = calcularPrazoInterno(regiao, dataPedido, 1);
+  if (!prazo) return <span className="text-xs text-slate-400">—</span>;
+
+  const titulo = prazo.estimativaSemRegiao
+    ? MSG_SELECIONE_REGIAO_PRAZO
+    : `${prazo.diasCorridos} dias corridos (${regiao})`;
+
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-0.5" title={titulo}>
+      <span className={`text-xs font-semibold ${prazo.ultrapassado ? "text-slate-900 underline decoration-slate-400" : "text-slate-800"}`}>
+        {formatarData(prazo.dataPrazo)}
+        {prazo.estimativaSemRegiao ? "*" : ""}
+      </span>
+      {prazo.estimativaSemRegiao ? (
+        <span className="max-w-[88px] text-center text-[8px] font-medium leading-tight text-amber-700">
+          Selecione a região
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTableProps) {
+  const gridTemplateColumns = GRID_TEMPLATE_COLUNAS;
   const status = useExportStore((state) => state.status);
   const updatePedidoStatus = useExportStore((state) => state.updatePedidoStatus);
   const [erroAtualizacao, setErroAtualizacao] = useState("");
@@ -143,7 +212,12 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           row.original.regiao ? (
             <span>{row.original.regiao}</span>
           ) : (
-            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Sem regiao</span>
+            <span
+              className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+              title={MSG_SELECIONE_REGIAO_PRAZO}
+            >
+              Sem região
+            </span>
           ),
       },
       {
@@ -160,6 +234,13 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
         accessorKey: "dataExpedicao",
         header: "Data Expedicao",
         cell: ({ row }) => formatarData(row.original.dataExpedicao),
+      },
+      {
+        id: "prazoInterno",
+        header: "Prazo interno",
+        cell: ({ row }) => (
+          <ConteudoPrazoInterno regiao={row.original.regiao} dataPedido={row.original.dataPedido} />
+        ),
       },
       {
         accessorKey: "prazoEntrega",
@@ -392,7 +473,8 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!pedido.dataEntrega;
           const atrasado = !concluido && isAtrasado(pedido.prazoEntrega, pedido.dataAgendamento);
           const proximo = !concluido && isPrazoProximo(pedido.prazoEntrega, pedido.dataAgendamento);
-          
+          const prazoInternoMobile = calcularPrazoInterno(pedido.regiao, pedido.dataPedido, 1);
+
           return (
             <div key={pedido.numeroPedido} className="space-y-2 rounded-xl border-2 border-slate-300 bg-white p-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
@@ -418,6 +500,18 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                 <p>
                   <span className="font-medium text-slate-700">Expedicao:</span> {formatarData(pedido.dataExpedicao)}
                 </p>
+                {prazoInternoMobile ? (
+                  <p
+                    className={prazoInternoMobile.ultrapassado ? "font-semibold text-slate-900" : "font-semibold text-slate-800"}
+                    title={prazoInternoMobile.estimativaSemRegiao ? MSG_SELECIONE_REGIAO_PRAZO : undefined}
+                  >
+                    <span className="font-medium text-slate-700">Prazo interno:</span> {formatarData(prazoInternoMobile.dataPrazo)}
+                    {prazoInternoMobile.estimativaSemRegiao ? "*" : ""}
+                    {prazoInternoMobile.estimativaSemRegiao ? (
+                      <span className="ml-1 text-[10px] font-medium text-amber-700">(selecione a região)</span>
+                    ) : null}
+                  </p>
+                ) : null}
                 {concluido && pedido.dataEntrega ? (() => {
                   const info = infoFinalizado(pedido.prazoEntrega, pedido.dataEntrega, pedido.dataAgendamento);
                   return (
@@ -481,18 +575,68 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
       </div>
 
       <div className="hidden lg:block w-full">
+        <div
+          className="sticky top-0 z-40 mb-3 grid w-full items-stretch gap-x-1 rounded-xl border-2 border-slate-300 bg-white shadow-sm"
+          style={{ gridTemplateColumns }}
+          role="row"
+        >
+          {table.getHeaderGroups()[0]?.headers.map((header, index, headers) => {
+            const isStatus = index === headers.length - 1;
+            const alinharEsquerda = COLUNAS_ALINHADAS_ESQUERDA.has(header.column.id);
+            const sorted = header.column.getIsSorted();
+            return (
+              <div
+                key={header.id}
+                className={isStatus ? CABECALHO_COLUNA_STATUS : alinharEsquerda ? CABECALHO_COLUNA_ESQUERDA : CABECALHO_COLUNA}
+              >
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className={alinharEsquerda ? ROTULO_COLUNA_ESQUERDA : ROTULO_COLUNA_CENTRO}
+                  onClick={header.column.getToggleSortingHandler()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      header.column.getToggleSortingHandler()?.(event);
+                    }
+                  }}
+                >
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                  {sorted === "asc" ? " ↑" : sorted === "desc" ? " ↓" : null}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
         <div className="w-full space-y-5">
           {table.getRowModel().rows.map((row) => {
             const statusAtual = status.find((s) => s.id === row.original.statusAtual);
             const concluido = statusAtual?.nome.toLowerCase().includes("finalizado") || !!row.original.dataEntrega;
             const atrasado = !concluido && isAtrasado(row.original.prazoEntrega, row.original.dataAgendamento);
             const proximo = !concluido && isPrazoProximo(row.original.prazoEntrega, row.original.dataAgendamento);
-            const termometro = calcularCronogramaPedido(row.original);
+            const { dias: diasInterno } = diasPrazoInternoPorRegiao(row.original.regiao);
+            const dataPrazoInternoPedido = dataPrazoInterno(row.original.dataPedido, diasInterno);
+            const termometro = calcularCronogramaPedido(row.original, {
+              concluido,
+              dataPrazoInterno: dataPrazoInternoPedido,
+            });
+            const totalEscalaVisivel = termometro.totalDiasEscala;
+            const prazoInterno = termometro.valido
+              ? calcularPrazoInterno(row.original.regiao, row.original.dataPedido, totalEscalaVisivel)
+              : null;
+            const prazoPercentualVisivel = termometro.prazoPercentual;
+            const temEmAberto = termometro.segmentos.some((s) => s.id === "emAberto");
+            const temAposPrazoInterno = termometro.segmentos.some((s) => s.id === "aposPrazoInterno");
+            const temAtrasoOficial = termometro.segmentos.some((s) => s.id === "atrasoPrazo");
+            const indiceDiaPrazoInterno =
+              prazoInterno != null
+                ? dayjs(`${prazoInterno.dataPrazo}T00:00:00`).diff(dayjs(`${row.original.dataPedido}T00:00:00`), "day")
+                : null;
 
             return (
               <motion.div
                 key={row.id}
-                layout
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 onClick={() => {
@@ -502,28 +646,50 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                   canManage && onPedidoClick ? "cursor-pointer" : ""
                 } ${atrasado ? "bg-red-50/30" : proximo ? "bg-amber-50/20" : ""}`}
               >
-                <div className="relative px-6 pb-2 pt-11">
+                <div className="relative px-6 pb-2 pt-14">
                   {termometro.valido ? (
-                    <div className="relative h-2 w-full">
+                    <div className="relative h-3 w-full">
                       {/* Marcacoes de Datas Superiores */}
                       <div className="absolute -top-7 left-0 h-7 w-full pointer-events-none">
-                        {Array.from({ length: termometro.totalDiasEscala + 1 }).map((_, i) => {
+                        {Array.from({ length: totalEscalaVisivel + 1 }).map((_, i) => {
                           const dataInicio = dayjs(`${row.original.dataPedido}T00:00:00`);
                           const dataTick = dataInicio.add(i, "day");
-                          const showLabel = termometro.totalDiasEscala <= 15 || i % Math.ceil(termometro.totalDiasEscala / 15) === 0;
-                          
+                          const showLabel = totalEscalaVisivel <= 15 || i % Math.ceil(totalEscalaVisivel / 15) === 0;
+                          const ehDiaPrazoInterno = indiceDiaPrazoInterno === i;
+                          const mostraRotulo = showLabel || ehDiaPrazoInterno;
+
                           return (
                             <div
                               key={i}
                               className="absolute flex flex-col items-center"
-                              style={{ left: `${(i / termometro.totalDiasEscala * 100).toFixed(2)}%`, transform: "translateX(-50%)" }}
+                              style={{ left: `${(i / totalEscalaVisivel * 100).toFixed(2)}%`, transform: "translateX(-50%)" }}
                             >
-                              {showLabel && (
-                                <span className="text-[7px] font-bold text-slate-300 transition-colors group-hover:text-slate-400">
-                                  {dataTick.format("DD/MM")}
-                                </span>
-                              )}
-                              <div className="h-2 w-0.5 bg-slate-300" />
+                              {mostraRotulo ? (
+                                ehDiaPrazoInterno ? (
+                                  <div className="flex flex-col items-center">
+                                    <span
+                                      className="whitespace-nowrap rounded-full bg-red-600 px-1.5 py-0.5 text-[7px] font-bold leading-none text-white shadow-sm ring-1 ring-red-700/40"
+                                      title={
+                                        prazoInterno?.estimativaSemRegiao
+                                          ? MSG_SELECIONE_REGIAO_PRAZO
+                                          : `Prazo interno: ${formatarData(prazoInterno!.dataPrazo)}`
+                                      }
+                                    >
+                                      {dataTick.format("DD/MM")}
+                                      {prazoInterno?.estimativaSemRegiao ? "*" : ""}
+                                    </span>
+                                    <span
+                                      className="mt-0.5 block h-0 w-0 border-x-[3px] border-t-[4px] border-x-transparent border-t-red-600"
+                                      aria-hidden
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="text-[7px] font-bold text-slate-300 transition-colors group-hover:text-slate-400">
+                                    {dataTick.format("DD/MM")}
+                                  </span>
+                                )
+                              ) : null}
+                              <div className={`h-2 w-0.5 ${ehDiaPrazoInterno ? "bg-red-500/80" : "bg-slate-300"}`} />
                             </div>
                           );
                         })}
@@ -533,9 +699,8 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                       {(() => {
                         const hoje = dayjs().startOf("day");
                         const dataInicio = dayjs(`${row.original.dataPedido}T00:00:00`);
-                        const totalDias = termometro.totalDiasEscala;
                         const diasDecorridos = Math.max(0, hoje.diff(dataInicio, "day", true));
-                        const percentualHoje = Math.min(100, (diasDecorridos / totalDias) * 100);
+                        const percentualHoje = Math.min(100, (diasDecorridos / totalEscalaVisivel) * 100);
 
                         return (
                           <div
@@ -550,11 +715,11 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                       <div className="relative h-full w-full overflow-hidden rounded-full border-2 border-slate-300 bg-slate-50">
                         {/* Marcadores de Dias */}
                         <div className="absolute inset-0 h-full w-full pointer-events-none">
-                          {Array.from({ length: termometro.totalDiasEscala + 1 }).map((_, i) => (
+                          {Array.from({ length: totalEscalaVisivel + 1 }).map((_, i) => (
                             <div
                               key={i}
                               className="absolute h-full w-0.5 bg-slate-400/60"
-                              style={{ left: `${(i / termometro.totalDiasEscala * 100).toFixed(2)}%` }}
+                              style={{ left: `${(i / totalEscalaVisivel * 100).toFixed(2)}%` }}
                             />
                           ))}
                         </div>
@@ -576,23 +741,12 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                             />
                           ) : null}
                         </div>
-                        {termometro.atrasado && !concluido ? (
-                          <div
-                            className="absolute right-0 top-0 h-full bg-red-600/90"
-                            style={{ width: `${termometro.atrasoPercentual.toFixed(2)}%` }}
-                            title={`Atraso: ${termometro.atrasoDias} dia(s)`}
-                          />
-                        ) : null}
                         <div
-                          className="absolute bottom-0 top-0 w-1 bg-slate-900"
-                          style={{
-                            left:
-                              termometro.prazoPercentual >= 100
-                                ? "calc(100% - 1px)"
-                                : `${termometro.prazoPercentual.toFixed(2)}%`,
-                          }}
+                          className="absolute bottom-0 top-0 z-[12] w-1 bg-slate-900"
+                          style={{ left: posicaoPercentualEscala(prazoPercentualVisivel) }}
                           title="Marco do prazo de entrega"
                         />
+                        {prazoInterno ? <MarcadorPrazoInternoTermometro prazoInterno={prazoInterno} /> : null}
                       </div>
                     </div>
                   ) : (
@@ -603,10 +757,10 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                 </div>
 
                 <div
-                  className={`grid w-full ${GRID_COLUNAS_PEDIDOS} items-stretch gap-x-1 gap-y-0 overflow-hidden border-t-2 border-slate-200 bg-slate-50/30 text-xs text-slate-800`}
+                  className="grid w-full items-stretch gap-x-1 gap-y-0 overflow-hidden border-t-2 border-slate-200 bg-slate-50/30 text-xs text-slate-800"
+                  style={{ gridTemplateColumns }}
                 >
                   {row.getVisibleCells().map((cell, index, cells) => {
-                    const header = table.getHeaderGroups()[0]?.headers[index];
                     const isStatus = index === cells.length - 1;
                     const alinharEsquerda = COLUNAS_ALINHADAS_ESQUERDA.has(cell.column.id);
                     return (
@@ -615,28 +769,8 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                         className={
                           isStatus ? CELULA_COLUNA_STATUS : alinharEsquerda ? CELULA_COLUNA_ESQUERDA : CELULA_COLUNA
                         }
-                        onClick={(event) => event.stopPropagation()}
+                        onClick={isStatus ? (event) => event.stopPropagation() : undefined}
                       >
-                        {header ? (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            className={alinharEsquerda ? ROTULO_COLUNA_ESQUERDA : ROTULO_COLUNA_CENTRO}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              header.column.getToggleSortingHandler()?.(event);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                header.column.getToggleSortingHandler()?.(event);
-                              }
-                            }}
-                          >
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                          </span>
-                        ) : null}
                         <div className={alinharEsquerda ? VALOR_COLUNA_ESQUERDA : VALOR_COLUNA_CENTRO}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </div>
@@ -656,11 +790,26 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                     <span className="flex items-center gap-1">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" /> Entrega
                     </span>
-                    {termometro.atrasado && !concluido && (
-                      <span className="flex items-center gap-1 text-red-500">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Atraso
+                    {temEmAberto ? (
+                      <span className="flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600" /> Em andamento
                       </span>
-                    )}
+                    ) : null}
+                    {temAposPrazoInterno ? (
+                      <span className="flex items-center gap-1 text-slate-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-600" /> Após prazo interno
+                      </span>
+                    ) : null}
+                    {temAtrasoOficial && !concluido ? (
+                      <span className="flex items-center gap-1 text-red-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Atraso oficial
+                      </span>
+                    ) : null}
+                    <span className="flex items-center gap-1 text-slate-700">
+                      <span className="rounded-full bg-red-600 px-1 text-[7px] font-bold text-white">PI</span>
+                      Prazo interno
+                      <span className="text-slate-400">(balão vermelho + faixa preta)</span>
+                    </span>
                   </div>
                 )}
               </motion.div>

@@ -10,7 +10,9 @@ import { Dialog, DialogContent } from "./components/ui/dialog";
 import { useExportStore } from "./store/useExportStore";
 import { useAuthStore } from "./store/useAuthStore";
 import { formatarData, labelPrazo, prazoEfetivoEntrega } from "./utils/date";
+import { ConicKpiCard } from "./components/ConicKpiCard";
 import { calcularCronogramaPedido } from "./utils/cronogramaPedido";
+import { calcularResumoDentroPrazoInterno } from "./utils/prazoInterno";
 
 type View = "dashboard" | "funil" | "status" | "usuarios";
 
@@ -45,9 +47,11 @@ export default function App() {
   }, [usuarioAtual, loadPedidos, loadStatus]);
 
   const isAdmin = usuarioAtual?.tipo === "administrador";
+  const isDiretoria = usuarioAtual?.tipo === "diretoria";
   const canManage = isAdmin;
   const canCreate = isAdmin || usuarioAtual?.tipo === "representante";
   const canSeeCadastros = isAdmin;
+  const canSeePrazoInternoKpi = isAdmin || isDiretoria;
   const pedidosVisiveis =
     usuarioAtual?.tipo === "representante"
       ? pedidos.filter((pedido) => pedido.representante === usuarioAtual.nome)
@@ -89,13 +93,7 @@ export default function App() {
       return { ...item, percentual, inicio, fim };
     });
 
-    const conic = segmentos.length
-      ? `conic-gradient(${segmentos
-          .map((seg) => `${seg.cor} ${seg.inicio.toFixed(2)}% ${seg.fim.toFixed(2)}%`)
-          .join(", ")})`
-      : "conic-gradient(#e5e7eb 0% 100%)";
-
-    return { total, segmentos, conic };
+    return { total, segmentos };
   }, [pedidosFiltrados, status]);
 
   const notasPorRepresentante = useMemo(() => {
@@ -123,13 +121,7 @@ export default function App() {
       return { ...item, percentual, inicio, fim };
     });
 
-    const conic = segmentos.length
-      ? `conic-gradient(${segmentos
-          .map((seg) => `${seg.cor} ${seg.inicio.toFixed(2)}% ${seg.fim.toFixed(2)}%`)
-          .join(", ")})`
-      : "conic-gradient(#e5e7eb 0% 100%)";
-
-    return { total, segmentos, conic };
+    return { total, segmentos };
   }, [pedidosFiltrados]);
 
   const mediaEtapasTempo = useMemo(() => {
@@ -173,13 +165,7 @@ export default function App() {
       return { ...item, inicio, fim };
     });
 
-    const conic = segmentos.length
-      ? `conic-gradient(${segmentos
-          .map((seg) => `${seg.cor} ${seg.inicio.toFixed(2)}% ${seg.fim.toFixed(2)}%`)
-          .join(", ")})`
-      : "conic-gradient(#e5e7eb 0% 100%)";
-
-    return { base: baseValidos, segmentos, conic };
+    return { base: baseValidos, segmentos };
   }, [pedidosFiltrados]);
 
   const entregaNoPrazo = useMemo(() => {
@@ -191,11 +177,31 @@ export default function App() {
     const noPrazo = total - atrasados;
     const atrasoPercentual = total > 0 ? (atrasados / total) * 100 : 0;
     const emDiaPercentual = 100 - atrasoPercentual;
-    const conic = `conic-gradient(#dc2626 0% ${atrasoPercentual.toFixed(2)}%, #16a34a ${atrasoPercentual.toFixed(
-      2,
-    )}% ${(atrasoPercentual + emDiaPercentual).toFixed(2)}%)`;
-    return { total, atrasados, noPrazo, atrasoPercentual, emDiaPercentual, conic };
+    const segmentos = [
+      {
+        id: "atrasados",
+        nome: "Atrasados",
+        cor: "#dc2626",
+        valor: `${atrasados} (${atrasoPercentual.toFixed(1)}%)`,
+        inicio: 0,
+        fim: atrasoPercentual,
+      },
+      {
+        id: "no-prazo",
+        nome: "No prazo",
+        cor: "#16a34a",
+        valor: `${noPrazo} (${emDiaPercentual.toFixed(1)}%)`,
+        inicio: atrasoPercentual,
+        fim: 100,
+      },
+    ];
+    return { total, atrasados, noPrazo, atrasoPercentual, emDiaPercentual, segmentos };
   }, [pedidosFiltrados]);
+
+  const dentroPrazoInterno = useMemo(() => {
+    if (!canSeePrazoInternoKpi) return null;
+    return calcularResumoDentroPrazoInterno(pedidosFiltrados, status);
+  }, [pedidosFiltrados, status, canSeePrazoInternoKpi]);
 
   if (!usuarioAtual) return <LoginPage />;
   if (loadingDados && pedidos.length === 0) return <main className="p-6 text-sm text-slate-600">Carregando dados do backend...</main>;
@@ -274,114 +280,90 @@ export default function App() {
 
       <div className="mx-auto w-full max-w-[1800px] min-w-0 space-y-4 px-3 pb-20 pt-3 sm:px-4 md:space-y-5 md:px-6 md:pb-6 md:pt-4 xl:px-8">
         <header className="rounded-2xl bg-white p-4 shadow-sm md:p-5">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-center">
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-              <p className="mb-1 text-[11px] font-medium text-slate-500">Notas por estado</p>
-              <div className="flex min-w-0 items-center gap-3">
-                <div
-                  className="relative h-20 w-20 shrink-0 rounded-full"
-                  style={{ background: notasPorEstado.conic }}
-                >
-                  <div className="absolute inset-3 rounded-full bg-white" />
-                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-700">
-                    {notasPorEstado.total}
-                  </div>
-                </div>
-                <div className="min-w-0 space-y-1">
-                  {notasPorEstado.segmentos.slice(0, 3).map((item) => (
-                    <div key={item.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.cor }} />
-                      <span className="max-w-[130px] truncate">{item.nome}</span>
-                      <span className="font-medium text-slate-700">{item.quantidade}</span>
-                    </div>
-                  ))}
-                  {notasPorEstado.segmentos.length === 0 ? (
-                    <p className="text-[11px] text-slate-500">Sem notas no periodo.</p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+          <div
+            className={`grid gap-3 md:grid-cols-2 xl:items-center ${canSeePrazoInternoKpi ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}
+          >
+            <ConicKpiCard
+              titulo="Notas por estado"
+              total={notasPorEstado.total}
+              segmentos={notasPorEstado.segmentos.map((item) => ({
+                id: item.id,
+                nome: item.nome,
+                cor: item.cor,
+                valor: String(item.quantidade),
+                inicio: item.inicio,
+                fim: item.fim,
+              }))}
+              vazio="Sem notas no periodo."
+            />
 
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-              <p className="mb-1 text-[11px] font-medium text-slate-500">Notas por representante</p>
-              <div className="flex min-w-0 items-center gap-3">
-                <div
-                  className="relative h-20 w-20 shrink-0 rounded-full"
-                  style={{ background: notasPorRepresentante.conic }}
-                >
-                  <div className="absolute inset-3 rounded-full bg-white" />
-                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-700">
-                    {notasPorRepresentante.total}
-                  </div>
-                </div>
-                <div className="min-w-0 space-y-1">
-                  {notasPorRepresentante.segmentos.slice(0, 3).map((item) => (
-                    <div key={item.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.cor }} />
-                      <span className="max-w-[130px] truncate">{item.nome}</span>
-                      <span className="font-medium text-slate-700">{item.quantidade}</span>
-                    </div>
-                  ))}
-                  {notasPorRepresentante.segmentos.length === 0 ? (
-                    <p className="text-[11px] text-slate-500">Sem notas no periodo.</p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+            <ConicKpiCard
+              titulo="Notas por representante"
+              total={notasPorRepresentante.total}
+              segmentos={notasPorRepresentante.segmentos.map((item) => ({
+                id: item.id,
+                nome: item.nome,
+                cor: item.cor,
+                valor: String(item.quantidade),
+                inicio: item.inicio,
+                fim: item.fim,
+              }))}
+              vazio="Sem notas no periodo."
+            />
 
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-              <p className="mb-1 text-[11px] font-medium text-slate-500">Media de etapas</p>
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="relative h-20 w-20 shrink-0 rounded-full" style={{ background: mediaEtapasTempo.conic }}>
-                  <div className="absolute inset-3 rounded-full bg-white" />
-                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-700">
-                    {mediaEtapasTempo.base}
-                  </div>
-                </div>
-                <div className="min-w-0 space-y-1">
-                  {mediaEtapasTempo.segmentos.map((item) => (
-                    <div key={item.id} className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.cor }} />
-                      <span className="max-w-[130px] truncate">{item.nome}</span>
-                      <span className="font-medium text-slate-700">{item.mediaDias.toFixed(1)}d</span>
-                    </div>
-                  ))}
-                  {mediaEtapasTempo.base === 0 ? <p className="text-[11px] text-slate-500">Sem dados completos.</p> : null}
-                </div>
-              </div>
-            </div>
+            <ConicKpiCard
+              titulo="Media de etapas"
+              total={mediaEtapasTempo.base}
+              segmentos={mediaEtapasTempo.segmentos.map((item) => ({
+                id: item.id,
+                nome: item.nome,
+                cor: item.cor,
+                valor: `${item.mediaDias.toFixed(1)}d`,
+                inicio: item.inicio,
+                fim: item.fim,
+              }))}
+              vazio="Sem dados completos."
+            />
 
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-              <p className="mb-1 text-[11px] font-medium text-slate-500">Entrega no prazo</p>
-              <div className="flex min-w-0 items-center gap-3">
-                <div
-                  className="relative h-20 w-20 shrink-0 rounded-full"
-                  style={{ background: entregaNoPrazo.conic }}
-                >
-                  <div className="absolute inset-3 rounded-full bg-white" />
-                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-700">
-                    {entregaNoPrazo.total}
-                  </div>
-                </div>
-                <div className="min-w-0 space-y-1">
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-600" />
-                    <span className="max-w-[130px] truncate">Atrasados</span>
-                    <span className="font-medium text-slate-700">
-                      {entregaNoPrazo.atrasados} ({entregaNoPrazo.atrasoPercentual.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
-                    <span className="max-w-[130px] truncate">No prazo</span>
-                    <span className="font-medium text-slate-700">
-                      {entregaNoPrazo.noPrazo} ({entregaNoPrazo.emDiaPercentual.toFixed(1)}%)
-                    </span>
-                  </div>
-                  {entregaNoPrazo.total === 0 ? <p className="text-[11px] text-slate-500">Sem entregas fechadas.</p> : null}
-                </div>
-              </div>
-            </div>
+            <ConicKpiCard
+              titulo="Entrega no prazo"
+              total={entregaNoPrazo.total}
+              segmentos={entregaNoPrazo.segmentos}
+              vazio="Sem entregas fechadas."
+            />
+
+            {canSeePrazoInternoKpi && dentroPrazoInterno ? (
+              <ConicKpiCard
+                titulo="Dentro do prazo interno"
+                total={dentroPrazoInterno.total}
+                segmentos={[
+                  {
+                    id: "fora",
+                    nome: "Fora do prazo",
+                    cor: "#0f172a",
+                    valor: `${dentroPrazoInterno.fora} (${dentroPrazoInterno.foraPercentual.toFixed(1)}%)`,
+                    inicio: 0,
+                    fim: dentroPrazoInterno.foraPercentual,
+                  },
+                  {
+                    id: "dentro",
+                    nome: "Dentro do prazo",
+                    cor: "#16a34a",
+                    valor: `${dentroPrazoInterno.dentro} (${dentroPrazoInterno.dentroPercentual.toFixed(1)}%)`,
+                    inicio: dentroPrazoInterno.foraPercentual,
+                    fim: 100,
+                  },
+                ]}
+                vazio="Sem pedidos avaliáveis."
+                rodape={
+                  dentroPrazoInterno.comEstimativaRegiao > 0 ? (
+                    <p className="text-[10px] text-amber-700">
+                      {dentroPrazoInterno.comEstimativaRegiao} pedido(s) sem região (estimativa 8d Sul)
+                    </p>
+                  ) : null
+                }
+              />
+            ) : null}
           </div>
         </header>
 
