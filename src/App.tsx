@@ -48,10 +48,12 @@ export default function App() {
 
   const isAdmin = usuarioAtual?.tipo === "administrador";
   const isDiretoria = usuarioAtual?.tipo === "diretoria";
+  const isRepresentante = usuarioAtual?.tipo === "representante";
   const canManage = isAdmin;
-  const canCreate = isAdmin || usuarioAtual?.tipo === "representante";
+  const canCreate = isAdmin || isRepresentante;
   const canSeeCadastros = isAdmin;
   const canSeePrazoInternoKpi = isAdmin || isDiretoria;
+  const mostrarPrazoInterno = !isRepresentante;
   const pedidosVisiveis =
     usuarioAtual?.tipo === "representante"
       ? pedidos.filter((pedido) => pedido.representante === usuarioAtual.nome)
@@ -368,7 +370,7 @@ export default function App() {
         </header>
 
         {view === "dashboard" ? (
-          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} canCreate={canCreate} />
+          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} canCreate={canCreate} mostrarPrazoInterno={mostrarPrazoInterno} />
         ) : view === "funil" ? (
           <FunilPage pedidos={pedidosFiltrados} />
         ) : view === "usuarios" && canSeeCadastros ? (
@@ -376,7 +378,7 @@ export default function App() {
         ) : canSeeCadastros ? (
           <StatusManagementPage />
         ) : (
-          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} canCreate={canCreate} />
+          <DashboardPage pedidos={pedidosFiltrados} canManage={canManage} canCreate={canCreate} mostrarPrazoInterno={mostrarPrazoInterno} />
         )}
       </div>
 

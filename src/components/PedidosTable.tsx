@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 type PedidosTableProps = {
   dados: Pedido[];
   canManage: boolean;
+  mostrarPrazoInterno?: boolean;
   onPedidoClick?: (pedido: Pedido) => void;
 };
 type PeriodoRapido = "todos" | "7d" | "30d" | "90d" | "mes";
@@ -33,6 +34,8 @@ type AbaPedidos = "todos" | "ativos" | "atrasados" | "concluidos";
 /** Template do grid (inline — Tailwind não aceita grid-cols arbitrário montado em runtime). */
 const GRID_TEMPLATE_COLUNAS =
   "minmax(120px,1.5fr) minmax(100px,1.1fr) minmax(56px,0.6fr) minmax(120px,1.2fr) minmax(88px,0.85fr) repeat(3,minmax(104px,1fr)) minmax(96px,0.9fr) repeat(3,minmax(104px,1fr)) minmax(150px,max-content)";
+const GRID_TEMPLATE_COLUNAS_SEM_PRAZO_INTERNO =
+  "minmax(120px,1.5fr) minmax(100px,1.1fr) minmax(56px,0.6fr) minmax(120px,1.2fr) minmax(88px,0.85fr) repeat(3,minmax(104px,1fr)) repeat(3,minmax(104px,1fr)) minmax(150px,max-content)";
 const COLUNAS_ALINHADAS_ESQUERDA = new Set(["representante", "cliente"]);
 const ROTULO_COLUNA_CENTRO =
   "w-full shrink-0 cursor-pointer select-none text-center text-[9px] font-bold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-800";
@@ -114,8 +117,8 @@ function ConteudoPrazoInterno({ regiao, dataPedido }: { regiao: string; dataPedi
   );
 }
 
-export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTableProps) {
-  const gridTemplateColumns = GRID_TEMPLATE_COLUNAS;
+export function PedidosTable({ dados, canManage, mostrarPrazoInterno = true, onPedidoClick }: PedidosTableProps) {
+  const gridTemplateColumns = mostrarPrazoInterno ? GRID_TEMPLATE_COLUNAS : GRID_TEMPLATE_COLUNAS_SEM_PRAZO_INTERNO;
   const status = useExportStore((state) => state.status);
   const updatePedidoStatus = useExportStore((state) => state.updatePedidoStatus);
   const [erroAtualizacao, setErroAtualizacao] = useState("");
@@ -199,8 +202,8 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
     [filtradosBase, abaAtiva, status],
   );
 
-  const columns = useMemo<ColumnDef<Pedido>[]>(
-    () => [
+  const columns = useMemo<ColumnDef<Pedido>[]>(() => {
+    const todas: ColumnDef<Pedido>[] = [
       { accessorKey: "numeroPedido", header: "Pedido" },
       { accessorKey: "representante", header: "Representante" },
       { accessorKey: "numeroNF", header: "NF" },
@@ -328,9 +331,9 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
           );
         },
       },
-    ],
-    [status, updatePedidoStatus, canManage],
-  );
+    ];
+    return mostrarPrazoInterno ? todas : todas.filter((col) => col.id !== "prazoInterno");
+  }, [status, updatePedidoStatus, canManage, mostrarPrazoInterno]);
 
   const table = useReactTable({
     data: filtrados,
@@ -500,7 +503,7 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                 <p>
                   <span className="font-medium text-slate-700">Expedicao:</span> {formatarData(pedido.dataExpedicao)}
                 </p>
-                {prazoInternoMobile ? (
+                {mostrarPrazoInterno && prazoInternoMobile ? (
                   <p
                     className={prazoInternoMobile.ultrapassado ? "font-semibold text-slate-900" : "font-semibold text-slate-800"}
                     title={prazoInternoMobile.estimativaSemRegiao ? MSG_SELECIONE_REGIAO_PRAZO : undefined}
@@ -616,13 +619,15 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
             const atrasado = !concluido && isAtrasado(row.original.prazoEntrega, row.original.dataAgendamento);
             const proximo = !concluido && isPrazoProximo(row.original.prazoEntrega, row.original.dataAgendamento);
             const { dias: diasInterno } = diasPrazoInternoPorRegiao(row.original.regiao);
-            const dataPrazoInternoPedido = dataPrazoInterno(row.original.dataPedido, diasInterno);
+            const dataPrazoInternoPedido = mostrarPrazoInterno
+              ? dataPrazoInterno(row.original.dataPedido, diasInterno)
+              : null;
             const termometro = calcularCronogramaPedido(row.original, {
               concluido,
               dataPrazoInterno: dataPrazoInternoPedido,
             });
             const totalEscalaVisivel = termometro.totalDiasEscala;
-            const prazoInterno = termometro.valido
+            const prazoInterno = mostrarPrazoInterno && termometro.valido
               ? calcularPrazoInterno(row.original.regiao, row.original.dataPedido, totalEscalaVisivel)
               : null;
             const prazoPercentualVisivel = termometro.prazoPercentual;
@@ -805,11 +810,13 @@ export function PedidosTable({ dados, canManage, onPedidoClick }: PedidosTablePr
                         <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Atraso oficial
                       </span>
                     ) : null}
-                    <span className="flex items-center gap-1 text-slate-700">
-                      <span className="rounded-full bg-red-600 px-1 text-[7px] font-bold text-white">PI</span>
-                      Prazo interno
-                      <span className="text-slate-400">(balão vermelho + faixa preta)</span>
-                    </span>
+                    {mostrarPrazoInterno ? (
+                      <span className="flex items-center gap-1 text-slate-700">
+                        <span className="rounded-full bg-red-600 px-1 text-[7px] font-bold text-white">PI</span>
+                        Prazo interno
+                        <span className="text-slate-400">(balão vermelho + faixa preta)</span>
+                      </span>
+                    ) : null}
                   </div>
                 )}
               </motion.div>

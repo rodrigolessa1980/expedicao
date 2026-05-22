@@ -10,9 +10,10 @@ type DashboardPageProps = {
   pedidos: Pedido[];
   canManage: boolean;
   canCreate: boolean;
+  mostrarPrazoInterno?: boolean;
 };
 
-export function DashboardPage({ pedidos, canManage, canCreate }: DashboardPageProps) {
+export function DashboardPage({ pedidos, canManage, canCreate, mostrarPrazoInterno = true }: DashboardPageProps) {
   const [loading, setLoading] = useState(true);
   const [pedidoSelecionado, setPedidoSelecionado] = useState<Pedido | null>(null);
   const [dialogEdicaoAberto, setDialogEdicaoAberto] = useState(false);
@@ -43,6 +44,7 @@ export function DashboardPage({ pedidos, canManage, canCreate }: DashboardPagePr
         <PedidosTable
           dados={pedidos}
           canManage={canManage}
+          mostrarPrazoInterno={mostrarPrazoInterno}
           onPedidoClick={(pedido) => {
             if (!canManage) return;
             setPedidoSelecionado(pedido);
